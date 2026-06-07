@@ -1,0 +1,19 @@
+version: "1.0"
+name: "Frontend Development Stack"
+
+languages:
+  - name: node
+    version: "20.x"
+    mirror: npmmirror
+    package_manager: pnpm
+
+tools:
+  - git
+  - vscode
+
+databases: []
+
+shell:
+  type: zsh
+  plugins:
+    - oh-my-zsh

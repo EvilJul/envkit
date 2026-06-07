@@ -1,0 +1,22 @@
+version: "1.0"
+name: "Data Science & ML"
+
+languages:
+  - name: python
+    version: "3.12"
+    mirror: tsinghua
+
+tools:
+  - git
+  - docker
+  - vscode
+
+databases:
+  - name: postgresql
+    version: "16"
+    docker: true
+
+shell:
+  type: zsh
+  plugins:
+    - oh-my-zsh

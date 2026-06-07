@@ -1,0 +1,28 @@
+version: "1.0"
+name: "Go Microservices Backend"
+
+languages:
+  - name: go
+    version: "1.23"
+    mirror: goproxy
+
+tools:
+  - git
+  - docker
+  - vscode
+
+databases:
+  - name: postgresql
+    version: "16"
+    docker: true
+  - name: redis
+    version: "7"
+    docker: true
+  - name: mongodb
+    version: "7"
+    docker: true
+
+shell:
+  type: zsh
+  plugins:
+    - oh-my-zsh

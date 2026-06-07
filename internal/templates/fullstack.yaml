@@ -1,0 +1,32 @@
+version: "1.0"
+name: "Full Stack Development Stack"
+
+languages:
+  - name: node
+    version: "20.x"
+    mirror: npmmirror
+    package_manager: pnpm
+  - name: go
+    version: "1.23"
+    mirror: goproxy
+  - name: python
+    version: "3.12"
+    mirror: tsinghua
+
+tools:
+  - git
+  - docker
+  - vscode
+
+databases:
+  - name: postgresql
+    version: "16"
+    docker: true
+  - name: redis
+    version: "7"
+    docker: true
+
+shell:
+  type: zsh
+  plugins:
+    - oh-my-zsh
