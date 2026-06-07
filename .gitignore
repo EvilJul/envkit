@@ -1,5 +1,5 @@
 # Binaries
-envkit
+/envkit
 *.exe
 *.exe~
 *.dll
