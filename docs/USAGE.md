@@ -1,5 +1,7 @@
 # EnvKit 使用指南
 
+> EnvKit v0.2.0 - 一键配置开发环境的跨平台CLI工具
+
 ## 快速开始
 
 ### 1. 交互式生成配置文件
@@ -10,13 +12,17 @@ envkit init
 
 选择预设模板（前端/后端/全栈），自动生成 `dev-env.yaml` 配置文件。
 
-### 2. 配置国内镜像源
+### 2. 自动安装开发环境
 
 ```bash
 envkit install -f dev-env.yaml
 ```
 
-根据配置文件自动配置所有语言的国内镜像源。
+根据配置文件自动完成：
+- ✅ 安装编程语言（Node.js/Python/Go/Rust）
+- ✅ 配置国内镜像源
+- ✅ 安装开发工具（Git/Docker/VSCode）
+- ✅ 启动数据库容器（PostgreSQL/Redis/MySQL/MongoDB）
 
 ### 3. 检测系统环境
 
@@ -24,9 +30,184 @@ envkit install -f dev-env.yaml
 envkit detect
 ```
 
-查看当前系统已安装的编程语言、开发工具和包管理器。
+以表格形式查看当前系统已安装的编程语言、开发工具和包管理器。
 
-## 单独配置镜像源
+### 4. 管理 Docker 容器
+
+```bash
+# 启动数据库容器
+envkit docker start postgres 16
+envkit docker start redis 7
+
+# 查看容器列表
+envkit docker list
+
+# 停止容器
+envkit docker stop envkit-postgres
+
+# 删除容器
+envkit docker remove envkit-postgres
+```
+
+## 自动安装语言
+
+EnvKit v0.2.0 支持自动安装以下编程语言：
+
+### Node.js
+
+```bash
+# 通过配置文件安装
+# dev-env.yaml:
+languages:
+  - name: node
+    version: "20.x"
+    mirror: npmmirror
+```
+
+**安装方式：**
+- macOS: Homebrew
+- Linux: fnm (Fast Node Manager)
+- Windows: winget
+
+### Python
+
+```bash
+languages:
+  - name: python
+    version: "3.12"
+    mirror: tsinghua
+```
+
+**安装方式：**
+- macOS: Homebrew
+- Linux: uv (高性能 Python 包管理器)
+- Windows: winget
+
+### Go
+
+```bash
+languages:
+  - name: go
+    version: "1.23"
+    mirror: goproxy
+```
+
+**安装方式：**
+- macOS: Homebrew
+- Linux: 官方安装包
+- Windows: winget
+
+### Rust
+
+```bash
+languages:
+  - name: rust
+    version: "stable"
+    mirror: ustc
+```
+
+**安装方式：**
+- 所有平台: rustup
+
+## 自动安装工具
+
+### Git
+
+自动安装 Git 版本控制系统。
+
+**安装方式：**
+- macOS: Homebrew
+- Linux: apt-get
+- Windows: winget
+
+### Docker
+
+自动安装 Docker 容器引擎。
+
+**安装方式：**
+- Linux: 官方脚本
+- macOS/Windows: 提示手动下载 Docker Desktop
+
+### VSCode
+
+自动安装 Visual Studio Code 编辑器。
+
+**安装方式：**
+- macOS: Homebrew Cask
+- Linux: .deb 包
+- Windows: winget
+
+## Docker 容器管理
+
+### 启动数据库容器
+
+#### PostgreSQL
+
+```bash
+envkit docker start postgres 16
+```
+
+**连接信息：**
+- 主机: localhost
+- 端口: 5432
+- 用户: postgres
+- 密码: postgres
+- 数据卷: envkit-postgres-data
+
+#### Redis
+
+```bash
+envkit docker start redis 7
+```
+
+**连接信息：**
+- 主机: localhost
+- 端口: 6379
+- 数据卷: envkit-redis-data
+- 持久化: 已启用（AOF）
+
+#### MySQL
+
+```bash
+envkit docker start mysql 8
+```
+
+**连接信息：**
+- 主机: localhost
+- 端口: 3306
+- 用户: root
+- 密码: mysql
+- 数据卷: envkit-mysql-data
+
+#### MongoDB
+
+```bash
+envkit docker start mongo 7
+```
+
+**连接信息：**
+- 主机: localhost
+- 端口: 27017
+- 数据卷: envkit-mongodb-data
+- 认证: 无（开发环境）
+
+### 容器管理命令
+
+```bash
+# 列出所有 envkit 管理的容器
+envkit docker list
+
+# 停止容器
+envkit docker stop envkit-postgres
+
+# 删除容器（会询问是否删除数据卷）
+envkit docker remove envkit-postgres
+
+# 删除容器并删除数据卷
+# 在提示时输入 'y'
+envkit docker remove envkit-postgres
+# 是否同时删除数据卷? (y/N): y
+```
 
 ### Node.js (npm)
 
