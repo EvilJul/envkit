@@ -1,52 +1,98 @@
 # 贡献指南
 
-感谢你对 EnvKit 项目的关注！我们欢迎所有形式的贡献。
+感谢你考虑为 EnvKit 做贡献！
 
-## 贡献方式
+## 🚀 开始之前
 
-### 报告 Bug
+### 环境要求
 
-如果你发现了 bug，请创建一个 Issue，包含以下信息：
+- Go 1.21 或更高版本
+- Git
+- Docker (可选，用于测试容器功能)
 
-- 操作系统和版本
-- EnvKit 版本 (`envkit version`)
-- 复现步骤
-- 期望行为
-- 实际行为
-- 相关日志或截图
+### 克隆项目
 
-### 提出新功能
+```bash
+git clone https://github.com/fusheng/envkit.git
+cd envkit
+```
 
-如果你有好的想法，欢迎创建 Feature Request Issue，包含：
+## 🛠️ 开发流程
 
-- 功能描述
-- 使用场景
-- 预期效果
-- 可能的实现方案（可选）
+### 1. 本地开发
 
-### 提交代码
+```bash
+# 安装依赖
+go mod download
 
-1. **Fork 项目**
-   ```bash
-   git clone https://github.com/你的用户名/envkit.git
-   cd envkit
-   ```
+# 运行程序
+go run cmd/envkit/main.go detect
 
-2. **创建特性分支**
-   ```bash
-   git checkout -b feature/my-feature
-   ```
+# 构建
+go build -o envkit cmd/envkit/main.go
 
-3. **编写代码**
-   - 遵循项目代码风格
-   - 添加必要的注释
-   - 确保代码通过测试
+# 运行
+./envkit help
+```
 
-4. **提交更改**
-   ```bash
-   git add .
-   git commit -m "feat: 添加某某功能"
-   ```
+### 2. 代码结构
+
+```
+envkit/
+├── cmd/envkit/          # 主程序入口
+├── internal/
+│   ├── config/          # 配置文件解析
+│   ├── detector/        # 系统检测
+│   ├── docker/          # Docker 容器管理 (v0.2.0)
+│   ├── installer/       # 语言和工具安装器 (v0.2.0)
+│   ├── mirror/          # 镜像源配置
+│   ├── templates/       # 预设模板
+│   └── ui/              # TUI 界面组件 (v0.2.0)
+├── templates/           # YAML 模板文件
+└── docs/               # 文档
+```
+
+### 3. 添加新功能
+
+#### 添加新的语言支持
+
+1. 在 `internal/installer/language.go` 中添加新的 Installer 实现
+2. 在 `GetInstaller()` 中注册新语言
+3. 更新文档
+
+#### 添加新的工具支持
+
+1. 在 `internal/installer/tool.go` 中添加新的 Installer 实现
+2. 在 `GetToolInstaller()` 中注册新工具
+3. 更新文档
+
+#### 添加新的数据库支持
+
+1. 在 `internal/docker/manager.go` 中添加 `Start<Database>()` 方法
+2. 在 `handleDocker()` 和 `handleInstall()` 中添加对应的 case
+3. 更新文档
+
+### 4. 代码规范
+
+- 使用 `gofmt` 格式化代码
+- 遵循 Go 的命名约定
+- 添加适当的注释（中文）
+- 错误处理要完善
+
+### 5. 测试
+
+```bash
+# 运行所有测试
+go test ./...
+
+# 测试特定模块
+go test ./internal/installer/
+
+# 手动测试
+./envkit detect
+./envkit init
+./envkit docker list
+```
 
    提交信息格式：
    - `feat:` 新功能
