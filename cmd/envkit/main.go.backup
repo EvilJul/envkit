@@ -6,15 +6,12 @@ import (
 
 	"github.com/fusheng/envkit/internal/config"
 	"github.com/fusheng/envkit/internal/detector"
-	"github.com/fusheng/envkit/internal/docker"
-	"github.com/fusheng/envkit/internal/installer"
 	"github.com/fusheng/envkit/internal/mirror"
 	"github.com/fusheng/envkit/internal/templates"
-	"github.com/fusheng/envkit/internal/ui"
 )
 
 const (
-	version = "0.2.0"
+	version = "0.1.0"
 )
 
 func main() {

@@ -52,13 +52,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - embed 嵌入模板文件
 - 约 1365 行 Go 代码
 
-## [Unreleased]
+## [0.2.0] - 2026-06-08
 
-### Planned for v0.2.0
-- 自动安装编程语言（fnm for Node.js, uv for Python）
-- 自动安装开发工具（git, docker, vscode）
-- Docker 容器管理数据库
-- TUI 交互界面（进度条、实时日志）
+### Added
+
+#### 自动安装功能
+- 自动安装 Node.js (通过 fnm/brew/winget)
+- 自动安装 Python (通过 uv/brew/winget)
+- 自动安装 Go (通过 brew/官方安装包/winget)
+- 自动安装 Rust (通过 rustup)
+- 自动安装 Git (通过 brew/apt/winget)
+- 自动安装 Docker (Linux 通过官方脚本)
+- 自动安装 VSCode (通过 brew/deb包/winget)
+
+#### Docker 容器管理
+- 启动 PostgreSQL 容器
+- 启动 Redis 容器
+- 启动 MySQL 容器
+- 启动 MongoDB 容器
+- 列出所有容器
+- 停止/删除容器
+- 数据卷管理
+
+#### TUI 界面增强
+- 彩色输出 (Success/Error/Warning/Info)
+- 进度条显示
+- 旋转加载器
+- 表格显示
+- 分区标题
+
+#### 新增命令
+- `envkit docker start <db> <version>` - 启动数据库容器
+- `envkit docker stop <container>` - 停止容器
+- `envkit docker list` - 列出容器
+- `envkit docker remove <container>` - 删除容器
+
+### Changed
+- 版本号更新为 0.2.0
+- `envkit install` 现在会自动安装语言和工具
+- `envkit detect` 使用表格显示检测结果
+- 改进错误提示和用户反馈
+
+### Technical Details
+- 新增 internal/ui 模块 (~300 行)
+- 新增 internal/installer 模块 (~400 行)
+- 新增 internal/docker 模块 (~300 行)
+- 总代码量约 2194 行
+
+## [Unreleased]
 
 ### Planned for v0.3.0
 - dotfiles 管理和同步
