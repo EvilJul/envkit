@@ -797,6 +797,7 @@ func runCommand(name string, args ...string) error {
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+	cmd.Stdin = os.Stdin // 允许交互式输入（如 sudo 密码）
 
 	err := cmd.Run()
 	if err != nil {

@@ -71,12 +71,23 @@ install() {
     # URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
     # curl -L -o "${INSTALL_DIR}/envkit" "$URL"
 
-    # 临时方案：从本地复制、从 GitHub 下载或从源码编译
+    # 临时方案：从本地复制、从源码编译或从 GitHub 下载
     if [ -f "${PROJECT_ROOT}/dist/${BINARY_NAME}" ]; then
         cp "${PROJECT_ROOT}/dist/${BINARY_NAME}" "${INSTALL_DIR}/envkit"
         chmod +x "${INSTALL_DIR}/envkit"
         echo "✅ EnvKit 已从本地复制并成功安装到: ${INSTALL_DIR}/envkit"
+    elif command -v go >/dev/null 2>&1; then
+        # 优先从源码编译（如果有 Go）
+        echo "📦 检测到本地已安装 Go，正在从源码编译..."
+        if (cd "${PROJECT_ROOT}" && go build -o "${INSTALL_DIR}/envkit" ./cmd/envkit/main.go); then
+            chmod +x "${INSTALL_DIR}/envkit"
+            echo "✅ EnvKit 已从源码成功编译并安装到: ${INSTALL_DIR}/envkit"
+        else
+            echo "❌ 从源码编译 EnvKit 失败"
+            exit 1
+        fi
     else
+        # 如果没有 Go，尝试从 GitHub 下载
         echo "📦 正在尝试从 GitHub Releases 下载预编译的二进制文件..."
         if [ "$VERSION" = "latest" ]; then
             URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}"
@@ -85,25 +96,16 @@ install() {
         fi
 
         # 优先使用 curl 5秒超时直接下载
-        if curl -fsSL --connect-timeout 5 -o "${INSTALL_DIR}/envkit" "$URL"; then
+        if curl -fsSL --connect-timeout 5 --max-time 10 -o "${INSTALL_DIR}/envkit" "$URL"; then
             chmod +x "${INSTALL_DIR}/envkit"
             echo "✅ EnvKit 已从 GitHub Releases 下载并成功安装到: ${INSTALL_DIR}/envkit"
         else
             echo "⚠️  直连 GitHub 下载失败或超时，正在尝试使用国内镜像加速代理下载..."
             PROXY_URL="https://ghp.ci/${URL}"
-            
-            if curl -fsSL -o "${INSTALL_DIR}/envkit" "$PROXY_URL"; then
+
+            if curl -fsSL --connect-timeout 5 --max-time 10 -o "${INSTALL_DIR}/envkit" "$PROXY_URL"; then
                 chmod +x "${INSTALL_DIR}/envkit"
                 echo "✅ EnvKit 已通过加速代理成功下载并安装到: ${INSTALL_DIR}/envkit"
-            elif command -v go >/dev/null 2>&1; then
-                echo "⚠️  加速通道也下载失败，检测到本地已安装 Go，正在尝试从源码编译..."
-                if (cd "${PROJECT_ROOT}" && go build -o "${INSTALL_DIR}/envkit" ./cmd/envkit/main.go); then
-                    chmod +x "${INSTALL_DIR}/envkit"
-                    echo "✅ EnvKit 已从源码成功编译并安装到: ${INSTALL_DIR}/envkit"
-                else
-                    echo "❌ 从源码编译 EnvKit 失败"
-                    exit 1
-                fi
             else
                 echo "❌ 无法安装 EnvKit。"
                 echo "原因: 直连和加速通道下载均失败，且本地未安装 Go 编译器。"
