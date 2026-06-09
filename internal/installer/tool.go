@@ -335,6 +335,8 @@ func GetToolInstaller(tool string) ToolInstaller {
 		return &KubectlInstaller{}
 	case "minikube":
 		return &MinikubeInstaller{}
+	case "espidf", "esp-idf":
+		return &EspIdfInstaller{}
 	default:
 		return nil
 	}
@@ -673,6 +675,92 @@ func (m *MinikubeInstaller) IsInstalled() bool {
 
 func (m *MinikubeInstaller) GetVersion() string {
 	cmd := exec.Command("minikube", "version")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
+}
+
+// EspIdfInstaller ESP-IDF (EIM) 安装器
+type EspIdfInstaller struct{}
+
+func (e *EspIdfInstaller) Install() error {
+	spinner := ui.NewSpinner("正在安装 ESP-IDF (EIM)")
+	spinner.Start()
+	defer spinner.Stop()
+
+	var err error
+	switch runtime.GOOS {
+	case "darwin":
+		err = e.installOnDarwin()
+	case "linux":
+		err = e.installOnLinux()
+	case "windows":
+		err = exec.Command("winget", "install", "Espressif.EIM-CLI").Run()
+	default:
+		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+
+	if err == nil {
+		RecordInstallation("espidf", "tool", "latest", []string{"~/.espressif"}, []string{".espressif/export.sh"})
+	}
+	return err
+}
+
+func (e *EspIdfInstaller) installOnDarwin() error {
+	if !commandExists("brew") {
+		return fmt.Errorf("请先安装 Homebrew: https://brew.sh")
+	}
+
+	// 添加 EIM tap
+	_ = exec.Command("brew", "tap", "espressif/eim").Run()
+	// 安装 CLI 版本
+	cmd := exec.Command("brew", "install", "eim")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func (e *EspIdfInstaller) installOnLinux() error {
+	if commandExists("apt-get") {
+		ui.Info("正在配置 ESP-IDF APT 软件源...")
+		addSourceCmd := exec.Command("bash", "-c", `echo "deb [trusted=yes] https://dl.espressif.com/dl/eim/apt/ stable main" | sudo tee /etc/apt/sources.list.d/espressif.list`)
+		if err := addSourceCmd.Run(); err != nil {
+			return fmt.Errorf("添加 APT 软件源失败: %w", err)
+		}
+
+		updateCmd := exec.Command("sudo", "apt-get", "update")
+		_ = updateCmd.Run()
+
+		ui.Info("正在通过 APT 安装 eim-cli...")
+		installCmd := exec.Command("sudo", "apt-get", "install", "-y", "eim-cli")
+		installCmd.Stdout = os.Stdout
+		installCmd.Stderr = os.Stderr
+		return installCmd.Run()
+	} else if commandExists("dnf") {
+		ui.Info("正在通过 DNF 安装 RPM 仓库配置...")
+		repoCmd := exec.Command("sudo", "dnf", "install", "-y", "https://dl.espressif.com/dl/eim/rpm/eim-repo-latest.noarch.rpm")
+		if err := repoCmd.Run(); err != nil {
+			return fmt.Errorf("安装 RPM 仓库配置失败: %w", err)
+		}
+
+		ui.Info("正在通过 DNF 安装 eim-cli...")
+		installCmd := exec.Command("sudo", "dnf", "install", "-y", "eim-cli")
+		installCmd.Stdout = os.Stdout
+		installCmd.Stderr = os.Stderr
+		return installCmd.Run()
+	}
+
+	return fmt.Errorf("不支持的 Linux 包管理器（需要 apt 或 dnf）")
+}
+
+func (e *EspIdfInstaller) IsInstalled() bool {
+	return commandExists("eim")
+}
+
+func (e *EspIdfInstaller) GetVersion() string {
+	cmd := exec.Command("eim", "--version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return ""

@@ -243,6 +243,7 @@ func DetectTools() map[string]*Tool {
 		"conda":    DetectTool("conda", "--version"),
 		"kubectl":  DetectTool("kubectl", "version --client"),
 		"minikube": DetectTool("minikube", "version"),
+		"espidf":   DetectTool("eim", "--version"),
 	}
 
 	return tools

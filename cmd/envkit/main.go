@@ -162,6 +162,7 @@ func handleInteractiveInstall() {
 		{"Miniconda", "miniconda", "tool", ""},
 		{"Kubectl", "kubectl", "tool", ""},
 		{"Minikube", "minikube", "tool", ""},
+		{"ESP-IDF", "espidf", "tool", ""},
 		{"Redis", "redis", "database", "7"},
 		{"MySQL", "mysql", "database", "8.0"},
 	}
@@ -429,6 +430,7 @@ func handleList() {
 	toolTable.AddRow("miniconda", getStatusString(tools["conda"]), "Conda 虚拟环境与包管理器 (清华源)")
 	toolTable.AddRow("kubectl", getStatusString(tools["kubectl"]), "Kubernetes 命令行控制工具")
 	toolTable.AddRow("minikube", getStatusString(tools["minikube"]), "本地单节点 Kubernetes 集群运行工具")
+	toolTable.AddRow("espidf", getStatusString(tools["espidf"]), "ESP-IDF (EIM) 乐鑫物联网开发框架")
 	toolTable.Render()
 
 	ui.PrintSection("数据库容器 (Databases via Docker)")
