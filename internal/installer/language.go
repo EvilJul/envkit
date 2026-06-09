@@ -479,6 +479,31 @@ func (j *JavaInstaller) installWithSdkman(version string) error {
 	}
 	sdkmanDir := filepath.Join(home, ".sdkman")
 	if _, err := os.Stat(sdkmanDir); os.IsNotExist(err) {
+		// 检查 zip/unzip 依赖
+		if !commandExists("zip") || !commandExists("unzip") {
+			ui.Info("检测到系统缺少 zip 或 unzip 依赖，正在尝试安装...")
+			if commandExists("apt-get") {
+				_ = runCommand("sudo", "apt-get", "update")
+				if err := runCommand("sudo", "apt-get", "install", "-y", "zip", "unzip"); err != nil {
+					ui.Warn("无法自动安装 zip/unzip 依赖，SDKMAN! 安装可能会失败。请手动安装：sudo apt-get install -y zip unzip")
+				}
+			} else if commandExists("yum") {
+				if err := runCommand("sudo", "yum", "install", "-y", "zip", "unzip"); err != nil {
+					ui.Warn("无法自动安装 zip/unzip 依赖，SDKMAN! 安装可能会失败。请手动安装：sudo yum install -y zip unzip")
+				}
+			} else if commandExists("dnf") {
+				if err := runCommand("sudo", "dnf", "install", "-y", "zip", "unzip"); err != nil {
+					ui.Warn("无法自动安装 zip/unzip 依赖，SDKMAN! 安装可能会失败。请手动安装：sudo dnf install -y zip unzip")
+				}
+			} else if commandExists("brew") {
+				if err := runCommand("brew", "install", "zip", "unzip"); err != nil {
+					ui.Warn("无法自动安装 zip/unzip 依赖，SDKMAN! 安装可能会失败。请手动安装：brew install zip unzip")
+				}
+			} else {
+				ui.Warn("无法确定当前系统的包管理器，请手动安装 zip 和 unzip 后重试。")
+			}
+		}
+
 		ui.Info("正在安装 SDKMAN!...")
 		if err := runCommand("sh", "-c", "curl -s \"https://get.sdkman.io\" | bash"); err != nil {
 			return fmt.Errorf("安装 SDKMAN! 失败: %w", err)
