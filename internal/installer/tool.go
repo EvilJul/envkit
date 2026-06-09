@@ -1,7 +1,9 @@
 package installer
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -84,56 +86,46 @@ func (d *DockerInstaller) installOnLinux() error {
 	ui.Info("正在安装 Docker Engine...")
 
 	// 更新包索引
-	updateCmd := exec.Command("sudo", "apt-get", "update")
-	if err := updateCmd.Run(); err != nil {
+	if err := runCommand("sudo", "apt-get", "update"); err != nil {
 		return fmt.Errorf("更新包索引失败: %w", err)
 	}
 
 	// 安装依赖
-	prereqCmd := exec.Command("sudo", "apt-get", "install", "-y",
-		"ca-certificates", "curl", "gnupg", "lsb-release")
-	if err := prereqCmd.Run(); err != nil {
+	if err := runCommand("sudo", "apt-get", "install", "-y",
+		"ca-certificates", "curl", "gnupg", "lsb-release"); err != nil {
 		return fmt.Errorf("安装依赖失败: %w", err)
 	}
 
 	// 添加 Docker GPG 密钥
-	keyCmd := exec.Command("bash", "-c",
-		"curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg")
-	if err := keyCmd.Run(); err != nil {
+	if err := runCommand("bash", "-c",
+		"curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg"); err != nil {
 		return fmt.Errorf("添加 GPG 密钥失败: %w", err)
 	}
 
 	// 添加 Docker 仓库
-	repoCmd := exec.Command("bash", "-c",
-		`echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null`)
-	if err := repoCmd.Run(); err != nil {
+	if err := runCommand("bash", "-c",
+		`echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null`); err != nil {
 		return fmt.Errorf("添加仓库失败: %w", err)
 	}
 
 	// 更新包索引
-	updateCmd2 := exec.Command("sudo", "apt-get", "update")
-	if err := updateCmd2.Run(); err != nil {
+	if err := runCommand("sudo", "apt-get", "update"); err != nil {
 		return fmt.Errorf("更新包索引失败: %w", err)
 	}
 
 	// 安装 Docker
-	installCmd := exec.Command("sudo", "apt-get", "install", "-y",
-		"docker-ce", "docker-ce-cli", "containerd.io", "docker-compose-plugin")
-	installCmd.Stdout = os.Stdout
-	installCmd.Stderr = os.Stderr
-	if err := installCmd.Run(); err != nil {
+	if err := runCommand("sudo", "apt-get", "install", "-y",
+		"docker-ce", "docker-ce-cli", "containerd.io", "docker-compose-plugin"); err != nil {
 		return fmt.Errorf("安装 Docker 失败: %w", err)
 	}
 
 	// 启动 Docker 服务
-	startCmd := exec.Command("sudo", "systemctl", "start", "docker")
-	if err := startCmd.Run(); err != nil {
+	if err := runCommand("sudo", "systemctl", "start", "docker"); err != nil {
 		ui.Warning("启动 Docker 服务失败: %v", err)
 	}
 
 	// 启用开机自启
-	enableCmd := exec.Command("sudo", "systemctl", "enable", "docker")
-	if err := enableCmd.Run(); err != nil {
+	if err := runCommand("sudo", "systemctl", "enable", "docker"); err != nil {
 		ui.Warning("设置开机自启失败: %v", err)
 	}
 
@@ -201,14 +193,12 @@ func (v *VSCodeInstaller) installOnDarwin() error {
 	downloadURL := "https://update.code.visualstudio.com/latest/darwin-universal/stable"
 	zipPath := "/tmp/vscode.zip"
 
-	downloadCmd := exec.Command("curl", "-L", "-o", zipPath, downloadURL)
-	if err := downloadCmd.Run(); err != nil {
+	if err := runCommand("curl", "-L", "-o", zipPath, downloadURL); err != nil {
 		return fmt.Errorf("下载 VSCode 失败: %w", err)
 	}
 
 	// 解压
-	unzipCmd := exec.Command("unzip", "-q", zipPath, "-d", "/tmp/vscode-extracted")
-	if err := unzipCmd.Run(); err != nil {
+	if err := runCommand("unzip", "-q", zipPath, "-d", "/tmp/vscode-extracted"); err != nil {
 		os.Remove(zipPath)
 		return fmt.Errorf("解压 VSCode 失败: %w", err)
 	}
@@ -217,10 +207,9 @@ func (v *VSCodeInstaller) installOnDarwin() error {
 	destPath := "/Applications/Visual Studio Code.app"
 	_ = exec.Command("rm", "-rf", destPath).Run()
 
-	moveCmd := exec.Command("mv", "/tmp/vscode-extracted/Visual Studio Code.app", destPath)
-	if err := moveCmd.Run(); err != nil {
+	if err := runCommand("mv", "/tmp/vscode-extracted/Visual Studio Code.app", destPath); err != nil {
 		// 备用 sudo 移动
-		_ = exec.Command("sudo", "mv", "/tmp/vscode-extracted/Visual Studio Code.app", destPath).Run()
+		_ = runCommand("sudo", "mv", "/tmp/vscode-extracted/Visual Studio Code.app", destPath)
 	}
 
 	// 移除 macOS quarantine 属性，防止首次运行时 Gatekeeper 弹窗阻塞终端
@@ -250,18 +239,15 @@ func (v *VSCodeInstaller) installOnLinux() error {
 	// 下载并安装 VSCode .deb 包
 	ui.Info("正在下载 VSCode...")
 
-	downloadCmd := exec.Command("curl", "-fsSL", "-o", "/tmp/vscode.deb",
-		"https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64")
-	if err := downloadCmd.Run(); err != nil {
+	if err := runCommand("curl", "-fsSL", "-o", "/tmp/vscode.deb",
+		"https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"); err != nil {
 		return fmt.Errorf("下载失败: %w", err)
 	}
 
 	ui.Info("正在安装...")
-	installCmd := exec.Command("sudo", "dpkg", "-i", "/tmp/vscode.deb")
-	if err := installCmd.Run(); err != nil {
+	if err := runCommand("sudo", "dpkg", "-i", "/tmp/vscode.deb"); err != nil {
 		// 修复依赖
-		fixCmd := exec.Command("sudo", "apt-get", "install", "-f", "-y")
-		fixCmd.Run()
+		_ = runCommand("sudo", "apt-get", "install", "-f", "-y")
 	}
 
 	// 清理临时文件
@@ -291,24 +277,17 @@ func installWithBrew(args ...string) error {
 	}
 
 	fullArgs := append([]string{"install"}, args...)
-	cmd := exec.Command("brew", fullArgs...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runCommand("brew", fullArgs...)
 }
 
 func installWithApt(packageName string) error {
 	// 更新包索引
-	updateCmd := exec.Command("sudo", "apt-get", "update")
-	if err := updateCmd.Run(); err != nil {
+	if err := runCommand("sudo", "apt-get", "update"); err != nil {
 		return fmt.Errorf("更新包索引失败: %w", err)
 	}
 
 	// 安装包
-	installCmd := exec.Command("sudo", "apt-get", "install", "-y", packageName)
-	installCmd.Stdout = os.Stdout
-	installCmd.Stderr = os.Stderr
-	return installCmd.Run()
+	return runCommand("sudo", "apt-get", "install", "-y", packageName)
 }
 
 func installWithWinget(packageId string) error {
@@ -316,10 +295,7 @@ func installWithWinget(packageId string) error {
 		return fmt.Errorf("请先安装 winget")
 	}
 
-	cmd := exec.Command("winget", "install", packageId)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runCommand("winget", "install", packageId)
 }
 
 // GetToolInstaller 获取工具安装器
@@ -424,16 +400,14 @@ func (m *MinicondaInstaller) installUnix(downloadURL, prefix string) error {
 	shPath := "/tmp/miniconda.sh"
 
 	// 下载安装脚本
-	downloadCmd := exec.Command("curl", "-fsSL", "-o", shPath, downloadURL)
-	if err := downloadCmd.Run(); err != nil {
+	if err := runCommand("curl", "-fsSL", "-o", shPath, downloadURL); err != nil {
 		return fmt.Errorf("下载 Miniconda 失败: %w", err)
 	}
 	defer os.Remove(shPath)
 
 	// 静默安装
 	_ = os.RemoveAll(prefix)
-	installCmd := exec.Command("sh", shPath, "-b", "-p", prefix)
-	if err := installCmd.Run(); err != nil {
+	if err := runCommand("sh", shPath, "-b", "-p", prefix); err != nil {
 		return fmt.Errorf("执行 Miniconda 安装脚本失败: %w", err)
 	}
 
@@ -444,16 +418,14 @@ func (m *MinicondaInstaller) installWindows(downloadURL, prefix string) error {
 	exePath := filepath.Join(os.Getenv("TEMP"), "miniconda.exe")
 
 	// 下载安装包
-	downloadCmd := exec.Command("curl", "-fsSL", "-o", exePath, downloadURL)
-	if err := downloadCmd.Run(); err != nil {
+	if err := runCommand("curl", "-fsSL", "-o", exePath, downloadURL); err != nil {
 		return fmt.Errorf("下载 Miniconda 失败: %w", err)
 	}
 	defer os.Remove(exePath)
 
 	// 静默安装
 	_ = os.RemoveAll(prefix)
-	installCmd := exec.Command(exePath, "/S", "/RegisterPython=0", "/D="+prefix)
-	if err := installCmd.Run(); err != nil {
+	if err := runCommand(exePath, "/S", "/RegisterPython=0", "/D="+prefix); err != nil {
 		return fmt.Errorf("执行 Miniconda 安装程序失败: %w", err)
 	}
 
@@ -559,8 +531,7 @@ func (k *KubectlInstaller) downloadAndInstallUnix(downloadURL string) error {
 	_ = os.MkdirAll(binDir, 0755)
 
 	destPath := filepath.Join(binDir, "kubectl")
-	downloadCmd := exec.Command("curl", "-fsSL", "-o", destPath, downloadURL)
-	if err := downloadCmd.Run(); err != nil {
+	if err := runCommand("curl", "-fsSL", "-o", destPath, downloadURL); err != nil {
 		return fmt.Errorf("下载 kubectl 失败: %w", err)
 	}
 
@@ -659,8 +630,7 @@ func (m *MinikubeInstaller) downloadAndInstallUnix(downloadURL string) error {
 	_ = os.MkdirAll(binDir, 0755)
 
 	destPath := filepath.Join(binDir, "minikube")
-	downloadCmd := exec.Command("curl", "-fsSL", "-o", destPath, downloadURL)
-	if err := downloadCmd.Run(); err != nil {
+	if err := runCommand("curl", "-fsSL", "-o", destPath, downloadURL); err != nil {
 		return fmt.Errorf("下载 minikube 失败: %w", err)
 	}
 
@@ -719,12 +689,9 @@ func (e *EspIdfInstaller) installOnDarwin() error {
 	}
 
 	// 添加 EIM tap
-	_ = exec.Command("brew", "tap", "espressif/eim").Run()
+	_ = runCommand("brew", "tap", "espressif/eim")
 	// 安装 CLI 版本
-	cmd := exec.Command("brew", "install", "eim")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := runCommand("brew", "install", "eim"); err != nil {
 		// 双重检查：如果命令已经存在，则认为安装成功
 		if e.IsInstalled() {
 			return nil
@@ -737,31 +704,22 @@ func (e *EspIdfInstaller) installOnDarwin() error {
 func (e *EspIdfInstaller) installOnLinux() error {
 	if commandExists("apt-get") {
 		ui.Info("正在配置 ESP-IDF APT 软件源...")
-		addSourceCmd := exec.Command("bash", "-c", `echo "deb [trusted=yes] https://dl.espressif.com/dl/eim/apt/ stable main" | sudo tee /etc/apt/sources.list.d/espressif.list`)
-		if err := addSourceCmd.Run(); err != nil {
+		if err := runCommand("bash", "-c", `echo "deb [trusted=yes] https://dl.espressif.com/dl/eim/apt/ stable main" | sudo tee /etc/apt/sources.list.d/espressif.list`); err != nil {
 			return fmt.Errorf("添加 APT 软件源失败: %w", err)
 		}
 
-		updateCmd := exec.Command("sudo", "apt-get", "update")
-		_ = updateCmd.Run()
+		_ = runCommand("sudo", "apt-get", "update")
 
 		ui.Info("正在通过 APT 安装 eim-cli...")
-		installCmd := exec.Command("sudo", "apt-get", "install", "-y", "eim-cli")
-		installCmd.Stdout = os.Stdout
-		installCmd.Stderr = os.Stderr
-		return installCmd.Run()
+		return runCommand("sudo", "apt-get", "install", "-y", "eim-cli")
 	} else if commandExists("dnf") {
 		ui.Info("正在通过 DNF 安装 RPM 仓库配置...")
-		repoCmd := exec.Command("sudo", "dnf", "install", "-y", "https://dl.espressif.com/dl/eim/rpm/eim-repo-latest.noarch.rpm")
-		if err := repoCmd.Run(); err != nil {
+		if err := runCommand("sudo", "dnf", "install", "-y", "https://dl.espressif.com/dl/eim/rpm/eim-repo-latest.noarch.rpm"); err != nil {
 			return fmt.Errorf("安装 RPM 仓库配置失败: %w", err)
 		}
 
 		ui.Info("正在通过 DNF 安装 eim-cli...")
-		installCmd := exec.Command("sudo", "dnf", "install", "-y", "eim-cli")
-		installCmd.Stdout = os.Stdout
-		installCmd.Stderr = os.Stderr
-		return installCmd.Run()
+		return runCommand("sudo", "dnf", "install", "-y", "eim-cli")
 	}
 
 	return fmt.Errorf("不支持的 Linux 包管理器（需要 apt 或 dnf）")
@@ -810,4 +768,26 @@ func (e *EspIdfInstaller) GetVersion() string {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// runCommand 执行外部命令并实时输出，若出错则在 Error 中附加详细的错误内容（包括 stdout/stderr 末尾）
+func runCommand(name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+
+	err := cmd.Run()
+	if err != nil {
+		stderrStr := strings.TrimSpace(stderrBuf.String())
+		if stderrStr == "" {
+			stderrStr = strings.TrimSpace(stdoutBuf.String())
+		}
+		if stderrStr != "" {
+			return fmt.Errorf("%w\n【错误原因/详情】:\n%s", err, stderrStr)
+		}
+		return err
+	}
+	return nil
 }

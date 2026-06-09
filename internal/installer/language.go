@@ -56,18 +56,14 @@ func (n *NodeInstaller) installWithBrew(version string) error {
 		return fmt.Errorf("请先安装 Homebrew: https://brew.sh")
 	}
 
-	cmd := exec.Command("brew", "install", "node@"+version)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runCommand("brew", "install", "node@"+version)
 }
 
 func (n *NodeInstaller) installWithFnm(version string) error {
 	// 检查是否安装了 fnm
 	if !commandExists("fnm") {
 		ui.Info("正在安装 fnm (Fast Node Manager)...")
-		installCmd := exec.Command("sh", "-c", "curl -fsSL https://fnm.vercel.app/install | bash")
-		if err := installCmd.Run(); err != nil {
+		if err := runCommand("sh", "-c", "curl -fsSL https://fnm.vercel.app/install | bash"); err != nil {
 			return fmt.Errorf("安装 fnm 失败: %w", err)
 		}
 		
@@ -77,16 +73,12 @@ func (n *NodeInstaller) installWithFnm(version string) error {
 	}
 
 	// 使用 fnm 安装 Node.js
-	cmd := exec.Command("fnm", "install", version)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := runCommand("fnm", "install", version); err != nil {
 		return fmt.Errorf("安装 Node.js 失败: %w", err)
 	}
 
 	// 设置为默认版本
-	defaultCmd := exec.Command("fnm", "default", version)
-	if err := defaultCmd.Run(); err != nil {
+	if err := runCommand("fnm", "default", version); err != nil {
 		return fmt.Errorf("设置默认 Node.js 版本失败: %w", err)
 	}
 
@@ -103,10 +95,7 @@ func (n *NodeInstaller) installWithWinget(version string) error {
 		return fmt.Errorf("请先安装 winget")
 	}
 
-	cmd := exec.Command("winget", "install", "OpenJS.NodeJS")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runCommand("winget", "install", "OpenJS.NodeJS")
 }
 
 func (n *NodeInstaller) IsInstalled() bool {
@@ -159,18 +148,14 @@ func (p *PythonInstaller) installWithBrew(version string) error {
 		return fmt.Errorf("请先安装 Homebrew: https://brew.sh")
 	}
 
-	cmd := exec.Command("brew", "install", "python@"+version)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runCommand("brew", "install", "python@"+version)
 }
 
 func (p *PythonInstaller) installWithUv(version string) error {
 	// 检查是否安装了 uv
 	if !commandExists("uv") {
 		ui.Info("正在安装 uv (Python 包管理器)...")
-		installCmd := exec.Command("sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh")
-		if err := installCmd.Run(); err != nil {
+		if err := runCommand("sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"); err != nil {
 			return fmt.Errorf("安装 uv 失败: %w", err)
 		}
 		
@@ -180,10 +165,7 @@ func (p *PythonInstaller) installWithUv(version string) error {
 	}
 
 	// 使用 uv 安装 Python
-	cmd := exec.Command("uv", "python", "install", version)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := runCommand("uv", "python", "install", version); err != nil {
 		return fmt.Errorf("安装 Python 失败: %w", err)
 	}
 
@@ -200,10 +182,7 @@ func (p *PythonInstaller) installWithWinget(version string) error {
 		return fmt.Errorf("请先安装 winget")
 	}
 
-	cmd := exec.Command("winget", "install", "Python.Python."+version)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runCommand("winget", "install", "Python.Python."+version)
 }
 
 func (p *PythonInstaller) IsInstalled() bool {
@@ -265,10 +244,7 @@ func (g *GoInstaller) installWithBrew(version string) error {
 		brewVersion = parts[0] + "." + parts[1]
 	}
 
-	cmd := exec.Command("brew", "install", "go@"+brewVersion)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := runCommand("brew", "install", "go@"+brewVersion); err != nil {
 		ui.Warning("通过 Homebrew 安装 Go 失败 (%v)，正在尝试直接从官方镜像源下载...", err)
 		return g.installFromSourceDarwin(version)
 	}
@@ -293,8 +269,7 @@ func (g *GoInstaller) installFromSourceDarwin(version string) error {
 
 	tarPath := filepath.Join(destDir, "go.tar.gz")
 
-	downloadCmd := exec.Command("curl", "-fsSL", "-o", tarPath, downloadURL)
-	if err := downloadCmd.Run(); err != nil {
+	if err := runCommand("curl", "-fsSL", "-o", tarPath, downloadURL); err != nil {
 		return fmt.Errorf("下载 Go 失败: %w", err)
 	}
 
@@ -302,8 +277,7 @@ func (g *GoInstaller) installFromSourceDarwin(version string) error {
 	goDir := filepath.Join(destDir, "go")
 	_ = os.RemoveAll(goDir)
 
-	extractCmd := exec.Command("tar", "-C", destDir, "-xzf", tarPath)
-	if err := extractCmd.Run(); err != nil {
+	if err := runCommand("tar", "-C", destDir, "-xzf", tarPath); err != nil {
 		os.Remove(tarPath)
 		return fmt.Errorf("解压 Go 失败: %w", err)
 	}
@@ -327,15 +301,13 @@ func (g *GoInstaller) installFromSource(version string) error {
 	arch := runtime.GOARCH
 	downloadURL := fmt.Sprintf("https://golang.google.cn/dl/go%s.linux-%s.tar.gz", version, arch)
 
-	downloadCmd := exec.Command("curl", "-fsSL", "-o", "/tmp/go.tar.gz", downloadURL)
-	if err := downloadCmd.Run(); err != nil {
+	if err := runCommand("curl", "-fsSL", "-o", "/tmp/go.tar.gz", downloadURL); err != nil {
 		return fmt.Errorf("下载失败: %w", err)
 	}
 
 	// 解压安装
 	ui.Info("正在安装...")
-	extractCmd := exec.Command("sudo", "tar", "-C", "/usr/local", "-xzf", "/tmp/go.tar.gz")
-	if err := extractCmd.Run(); err != nil {
+	if err := runCommand("sudo", "tar", "-C", "/usr/local", "-xzf", "/tmp/go.tar.gz"); err != nil {
 		return fmt.Errorf("安装失败: %w", err)
 	}
 
@@ -356,10 +328,7 @@ func (g *GoInstaller) installWithWinget(version string) error {
 		return fmt.Errorf("请先安装 winget")
 	}
 
-	cmd := exec.Command("winget", "install", "GoLang.Go")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runCommand("winget", "install", "GoLang.Go")
 }
 
 func (g *GoInstaller) IsInstalled() bool {
@@ -511,8 +480,7 @@ func (j *JavaInstaller) installWithSdkman(version string) error {
 	sdkmanDir := filepath.Join(home, ".sdkman")
 	if _, err := os.Stat(sdkmanDir); os.IsNotExist(err) {
 		ui.Info("正在安装 SDKMAN!...")
-		cmd := exec.Command("sh", "-c", "curl -s \"https://get.sdkman.io\" | bash")
-		if err := cmd.Run(); err != nil {
+		if err := runCommand("sh", "-c", "curl -s \"https://get.sdkman.io\" | bash"); err != nil {
 			return fmt.Errorf("安装 SDKMAN! 失败: %w", err)
 		}
 	}
@@ -524,10 +492,7 @@ func (j *JavaInstaller) installWithSdkman(version string) error {
 	}
 
 	ui.Info("正在使用 SDKMAN! 安装 Java %s...", sdkVersion)
-	installCmd := exec.Command("bash", "-c", fmt.Sprintf("source %s/.sdkman/bin/sdkman-init.sh && sdk install java %s", home, sdkVersion))
-	installCmd.Stdout = os.Stdout
-	installCmd.Stderr = os.Stderr
-	if err := installCmd.Run(); err != nil {
+	if err := runCommand("bash", "-c", fmt.Sprintf("source %s/.sdkman/bin/sdkman-init.sh && sdk install java %s", home, sdkVersion)); err != nil {
 		return fmt.Errorf("SDKMAN 安装 Java 失败: %w", err)
 	}
 
@@ -609,10 +574,7 @@ func (b *BunInstaller) Install(version string) error {
 }
 
 func (b *BunInstaller) installWithCurl() error {
-	cmd := exec.Command("sh", "-c", "curl -fsSL https://bun.sh/install | bash")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := runCommand("sh", "-c", "curl -fsSL https://bun.sh/install | bash"); err != nil {
 		return fmt.Errorf("安装 Bun 失败: %w", err)
 	}
 
