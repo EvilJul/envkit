@@ -63,27 +63,39 @@ install() {
     # URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
     # curl -L -o "${INSTALL_DIR}/envkit" "$URL"
 
-    # 临时方案：从本地复制或从源码编译
+    # 临时方案：从本地复制、从 GitHub 下载或从源码编译
     if [ -f "dist/${BINARY_NAME}" ]; then
         cp "dist/${BINARY_NAME}" "${INSTALL_DIR}/envkit"
         chmod +x "${INSTALL_DIR}/envkit"
-        echo "✅ EnvKit 已成功安装到: ${INSTALL_DIR}/envkit"
-    elif command -v go >/dev/null 2>&1; then
-        echo "⚠️  未在 dist/ 中找到预编译的二进制文件，检测到本地已安装 Go，正在从源码编译..."
-        if go build -o "${INSTALL_DIR}/envkit" ./cmd/envkit/main.go; then
-            chmod +x "${INSTALL_DIR}/envkit"
-            echo "✅ EnvKit 已从源码成功编译并安装到: ${INSTALL_DIR}/envkit"
+        echo "✅ EnvKit 已从本地复制并成功安装到: ${INSTALL_DIR}/envkit"
+    else
+        echo "📦 正在尝试从 GitHub Releases 下载预编译的二进制文件..."
+        if [ "$VERSION" = "latest" ]; then
+            URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}"
         else
-            echo "❌ 从源码编译 EnvKit 失败"
+            URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
+        fi
+
+        if curl -fsSL -o "${INSTALL_DIR}/envkit" "$URL"; then
+            chmod +x "${INSTALL_DIR}/envkit"
+            echo "✅ EnvKit 已成功从 GitHub Releases 下载并安装到: ${INSTALL_DIR}/envkit"
+        elif command -v go >/dev/null 2>&1; then
+            echo "⚠️  从 GitHub 下载失败，检测到本地已安装 Go，正在尝试从源码编译..."
+            if go build -o "${INSTALL_DIR}/envkit" ./cmd/envkit/main.go; then
+                chmod +x "${INSTALL_DIR}/envkit"
+                echo "✅ EnvKit 已从源码成功编译并安装到: ${INSTALL_DIR}/envkit"
+            else
+                echo "❌ 从源码编译 EnvKit 失败"
+                exit 1
+            fi
+        else
+            echo "❌ 无法安装 EnvKit。"
+            echo "原因: 从 GitHub 下载失败 (链接: $URL) 且本地未安装 Go 编译器。"
+            echo "请确认："
+            echo "  1. 你的网络能够正常访问 GitHub。"
+            echo "  2. 你已经在 GitHub 上发布了项目的 Release 版本并上传了二进制包 (仓库: $REPO)。"
             exit 1
         fi
-    else
-        echo "❌ 无法安装 EnvKit。"
-        echo "原因: 找不到预编译二进制文件 dist/${BINARY_NAME} 且本地未安装 Go 编译器。"
-        echo "解决办法:"
-        echo "  1. 运行 'go build -o dist/${BINARY_NAME} ./cmd/envkit' 编译后再运行此脚本。"
-        echo "  2. 或者从 GitHub Releases 下载预编译版本: https://github.com/${REPO}/releases"
-        exit 1
     fi
 
     # 检查是否在 PATH 中
