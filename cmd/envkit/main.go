@@ -101,7 +101,89 @@ func handleInstall() {
 	configFile := ""
 	hasFileArg := false
 
-	// 解析命令行参数
+	// 1. 优先解析直接在命令行参数中指定的安装目标 (例如 ./envkit install node espidf)
+	var directTargets []string
+	for i := 2; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if strings.HasPrefix(arg, "-") {
+			if (arg == "-f" || arg == "--file") && i+1 < len(os.Args) {
+				i++ // 跳过文件名参数
+			}
+			continue
+		}
+		directTargets = append(directTargets, arg)
+	}
+
+	// 如果指定了单项或多项直接安装目标
+	if len(directTargets) > 0 {
+		var languages []config.Language
+		var tools []string
+		var databases []config.Database
+
+		for _, target := range directTargets {
+			target = strings.ToLower(target)
+			switch target {
+			// 语言类
+			case "node", "nodejs":
+				languages = append(languages, config.Language{Name: "node", Version: "20.11.1"})
+			case "python", "python3":
+				languages = append(languages, config.Language{Name: "python", Version: "3.10.11"})
+			case "go", "golang":
+				languages = append(languages, config.Language{Name: "go", Version: "1.22.0"})
+			case "rust":
+				languages = append(languages, config.Language{Name: "rust", Version: "stable"})
+			case "java", "jdk":
+				languages = append(languages, config.Language{Name: "java", Version: "21"})
+			case "bun":
+				languages = append(languages, config.Language{Name: "bun", Version: "latest"})
+
+			// 工具类
+			case "git":
+				tools = append(tools, "git")
+			case "docker":
+				tools = append(tools, "docker")
+			case "vscode", "code":
+				tools = append(tools, "vscode")
+			case "miniconda", "conda":
+				tools = append(tools, "miniconda")
+			case "kubectl":
+				tools = append(tools, "kubectl")
+			case "minikube":
+				tools = append(tools, "minikube")
+			case "espidf", "esp-idf":
+				tools = append(tools, "espidf")
+
+			// 数据库类
+			case "postgresql", "postgres":
+				databases = append(databases, config.Database{Name: "postgresql", Version: "16", Docker: true})
+			case "redis":
+				databases = append(databases, config.Database{Name: "redis", Version: "7", Docker: true})
+			case "mysql":
+				databases = append(databases, config.Database{Name: "mysql", Version: "8.0", Docker: true})
+			case "mongodb", "mongo":
+				databases = append(databases, config.Database{Name: "mongodb", Version: "6.0", Docker: true})
+
+			default:
+				ui.Warning("未知组件: %s，已跳过", target)
+			}
+		}
+
+		if len(languages) > 0 || len(tools) > 0 || len(databases) > 0 {
+			cfg := &config.Config{
+				Version:   "0.2.0",
+				Name:      "命令行指定安装",
+				Languages: languages,
+				Tools:     tools,
+				Databases: databases,
+			}
+			runInstallation(cfg)
+			return
+		}
+		ui.Error("未选择任何有效的组件进行安装。")
+		os.Exit(1)
+	}
+
+	// 2. 解析配置文件命令行参数
 	for i, arg := range os.Args {
 		if arg == "-f" || arg == "--file" {
 			if i+1 < len(os.Args) {
@@ -565,7 +647,7 @@ func printUsage() {
 	fmt.Println(ui.Bold("命令:"))
 	fmt.Println("  init                        交互式生成配置文件")
 	fmt.Println("  list                        列出所有支持的一键安装环境与工具状态")
-	fmt.Println("  install [-f file]           安装开发环境 (不指定 -f 且无默认配置时开启交互式安装)")
+	fmt.Println("  install [components...]     安装开发环境 (支持直接指定单/多个组件，无参时开启交互式)")
 	fmt.Println("  uninstall [component]       卸载已安装的组件及配置 (不指定组件时开启交互式卸载)")
 	fmt.Println("  detect                      检测当前系统已安装的工具")
 	fmt.Println("  mirror <lang> [name]        单独配置某个语言的镜像源")
@@ -582,17 +664,19 @@ func printUsage() {
 	fmt.Println()
 
 	fmt.Println(ui.Bold("示例:"))
-	fmt.Println("  envkit init                         # 生成配置文件")
-	fmt.Println("  envkit list                         # 列出支持的环境列表")
-	fmt.Println("  envkit install                      # 交互式选择组件安装")
-	fmt.Println("  envkit install -f custom.yaml       # 使用自定义配置文件安装")
-	fmt.Println("  envkit uninstall                    # 交互式选择组件卸载")
-	fmt.Println("  envkit uninstall node               # 卸载 Node.js 并清理环境变量")
-	fmt.Println("  envkit uninstall --all              # 卸载所有组件并清理环境配置")
-	fmt.Println("  envkit detect                       # 检测系统环境")
-	fmt.Println("  envkit mirror npm npmmirror         # 配置npm镜像源")
-	fmt.Println("  envkit docker start postgres 16     # 启动 PostgreSQL")
-	fmt.Println("  envkit docker list                  # 查看运行容器")
+	fmt.Println("  ./envkit init                         # 生成配置文件")
+	fmt.Println("  ./envkit list                         # 列出支持的环境列表")
+	fmt.Println("  ./envkit install                      # 交互式选择组件安装")
+	fmt.Println("  ./envkit install node                 # 直接一键安装单个组件 (如 Node.js)")
+	fmt.Println("  ./envkit install go rust redis        # 一键安装指定的多个语言与工具")
+	fmt.Println("  ./envkit install -f custom.yaml       # 使用自定义配置文件安装")
+	fmt.Println("  ./envkit uninstall                    # 交互式选择组件卸载")
+	fmt.Println("  ./envkit uninstall node               # 卸载 Node.js 并清理环境变量")
+	fmt.Println("  ./envkit uninstall --all              # 卸载所有组件并清理环境配置")
+	fmt.Println("  ./envkit detect                       # 检测系统环境")
+	fmt.Println("  ./envkit mirror npm npmmirror         # 配置npm镜像源")
+	fmt.Println("  ./envkit docker start postgres 16     # 启动 PostgreSQL")
+	fmt.Println("  ./envkit docker list                  # 查看运行容器")
 }
 
 func handleDocker() {
