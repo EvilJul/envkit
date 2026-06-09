@@ -38,8 +38,9 @@ func (g *GitInstaller) Install() error {
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
 
-	if err == nil {
+	if err == nil || g.IsInstalled() {
 		RecordInstallation("git", "tool", "latest", nil, nil)
+		return nil
 	}
 	return err
 }
@@ -167,21 +168,22 @@ func (v *VSCodeInstaller) Install() error {
 	switch runtime.GOOS {
 	case "darwin":
 		err = v.installOnDarwin()
-		if err == nil {
-			RecordInstallation("vscode", "tool", "stable", []string{"/Applications/Visual Studio Code.app", "~/.local/bin/code", "/usr/local/bin/code"}, nil)
-		}
 	case "linux":
 		err = v.installOnLinux()
-		if err == nil {
-			RecordInstallation("vscode", "tool", "stable", nil, nil)
-		}
 	case "windows":
 		err = installWithWinget("Microsoft.VisualStudioCode")
-		if err == nil {
-			RecordInstallation("vscode", "tool", "stable", nil, nil)
-		}
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+
+	if err == nil || v.IsInstalled() {
+		switch runtime.GOOS {
+		case "darwin":
+			RecordInstallation("vscode", "tool", "stable", []string{"/Applications/Visual Studio Code.app", "~/.local/bin/code", "/usr/local/bin/code"}, nil)
+		default:
+			RecordInstallation("vscode", "tool", "stable", nil, nil)
+		}
+		return nil
 	}
 	return err
 }
@@ -510,21 +512,22 @@ func (k *KubectlInstaller) Install() error {
 	switch runtime.GOOS {
 	case "darwin":
 		err = k.installOnDarwin()
-		if err == nil {
-			RecordInstallation("kubectl", "tool", "v1.30.0", []string{"~/.local/bin/kubectl"}, []string{"# added by envkit"})
-		}
 	case "linux":
 		err = k.installOnLinux()
-		if err == nil {
-			RecordInstallation("kubectl", "tool", "v1.30.0", []string{"~/.local/bin/kubectl"}, []string{"# added by envkit"})
-		}
 	case "windows":
 		err = installWithWinget("Kubernetes.kubectl")
-		if err == nil {
-			RecordInstallation("kubectl", "tool", "v1.30.0", nil, nil)
-		}
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+
+	if err == nil || k.IsInstalled() {
+		switch runtime.GOOS {
+		case "darwin", "linux":
+			RecordInstallation("kubectl", "tool", "v1.30.0", []string{"~/.local/bin/kubectl"}, []string{"# added by envkit"})
+		default:
+			RecordInstallation("kubectl", "tool", "v1.30.0", nil, nil)
+		}
+		return nil
 	}
 	return err
 }
@@ -609,21 +612,22 @@ func (m *MinikubeInstaller) Install() error {
 	switch runtime.GOOS {
 	case "darwin":
 		err = m.installOnDarwin()
-		if err == nil {
-			RecordInstallation("minikube", "tool", "latest", []string{"~/.local/bin/minikube"}, []string{"# added by envkit"})
-		}
 	case "linux":
 		err = m.installOnLinux()
-		if err == nil {
-			RecordInstallation("minikube", "tool", "latest", []string{"~/.local/bin/minikube"}, []string{"# added by envkit"})
-		}
 	case "windows":
 		err = installWithWinget("Kubernetes.Minikube")
-		if err == nil {
-			RecordInstallation("minikube", "tool", "latest", nil, nil)
-		}
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+
+	if err == nil || m.IsInstalled() {
+		switch runtime.GOOS {
+		case "darwin", "linux":
+			RecordInstallation("minikube", "tool", "latest", []string{"~/.local/bin/minikube"}, []string{"# added by envkit"})
+		default:
+			RecordInstallation("minikube", "tool", "latest", nil, nil)
+		}
+		return nil
 	}
 	return err
 }
@@ -702,8 +706,9 @@ func (e *EspIdfInstaller) Install() error {
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
 
-	if err == nil {
+	if err == nil || e.IsInstalled() {
 		RecordInstallation("espidf", "tool", "latest", []string{"~/.espressif"}, []string{".espressif/export.sh"})
+		return nil
 	}
 	return err
 }
@@ -719,7 +724,14 @@ func (e *EspIdfInstaller) installOnDarwin() error {
 	cmd := exec.Command("brew", "install", "eim")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		// 双重检查：如果命令已经存在，则认为安装成功
+		if e.IsInstalled() {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func (e *EspIdfInstaller) installOnLinux() error {
@@ -756,7 +768,34 @@ func (e *EspIdfInstaller) installOnLinux() error {
 }
 
 func (e *EspIdfInstaller) IsInstalled() bool {
-	return commandExists("eim")
+	if commandExists("eim") {
+		return true
+	}
+	if runtime.GOOS == "darwin" {
+		if fileExists("/opt/homebrew/bin/eim") {
+			AddDirToPath("/opt/homebrew/bin")
+			return true
+		}
+		if fileExists("/usr/local/bin/eim") {
+			AddDirToPath("/usr/local/bin")
+			return true
+		}
+		if commandExists("brew") && exec.Command("brew", "list", "eim").Run() == nil {
+			out, err := exec.Command("brew", "--prefix", "eim").Output()
+			if err == nil {
+				prefix := strings.TrimSpace(string(out))
+				if prefix != "" {
+					binDir := filepath.Join(prefix, "bin")
+					if fileExists(filepath.Join(binDir, "eim")) {
+						AddDirToPath(binDir)
+						return true
+					}
+				}
+			}
+			return true
+		}
+	}
+	return false
 }
 
 func (e *EspIdfInstaller) GetVersion() string {
@@ -766,4 +805,9 @@ func (e *EspIdfInstaller) GetVersion() string {
 		return ""
 	}
 	return strings.TrimSpace(string(output))
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

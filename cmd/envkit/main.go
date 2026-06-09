@@ -342,6 +342,8 @@ func handleInteractiveInstall() {
 func runInstallation(cfg *config.Config) {
 	ui.PrintHeader("正在安装: " + cfg.Name)
 
+	var failedComponents []string
+
 	// 检测系统
 	sysInfo := detector.DetectSystem()
 	ui.PrintSection("系统信息")
@@ -368,6 +370,7 @@ func runInstallation(cfg *config.Config) {
 				ui.Info("正在安装 %s %s...", lang.Name, lang.Version)
 				if err := langInstaller.Install(lang.Version); err != nil {
 					ui.Error("安装 %s 失败: %v", lang.Name, err)
+					failedComponents = append(failedComponents, lang.Name)
 					continue
 				}
 				ui.Success("%s 安装成功！", lang.Name)
@@ -429,6 +432,7 @@ func runInstallation(cfg *config.Config) {
 				ui.Info("正在安装 %s...", tool)
 				if err := toolInstaller.Install(); err != nil {
 					ui.Error("安装 %s 失败: %v", tool, err)
+					failedComponents = append(failedComponents, tool)
 					continue
 				}
 				ui.Success("%s 安装成功！", tool)
@@ -459,19 +463,23 @@ func runInstallation(cfg *config.Config) {
 					password := "postgres"
 					if err := dockerMgr.StartPostgreSQL(db.Version, password); err != nil {
 						ui.Error("启动失败: %v", err)
+						failedComponents = append(failedComponents, db.Name)
 					}
 				case "redis":
 					if err := dockerMgr.StartRedis(db.Version); err != nil {
 						ui.Error("启动失败: %v", err)
+						failedComponents = append(failedComponents, db.Name)
 					}
 				case "mysql":
 					password := "mysql"
 					if err := dockerMgr.StartMySQL(db.Version, password); err != nil {
 						ui.Error("启动失败: %v", err)
+						failedComponents = append(failedComponents, db.Name)
 					}
 				case "mongodb", "mongo":
 					if err := dockerMgr.StartMongoDB(db.Version); err != nil {
 						ui.Error("启动失败: %v", err)
+						failedComponents = append(failedComponents, db.Name)
 					}
 				default:
 					ui.Warning("不支持的数据库: %s", db.Name)
@@ -481,7 +489,14 @@ func runInstallation(cfg *config.Config) {
 	}
 
 	ui.PrintSection("安装完成")
-	ui.Success("开发环境配置完成！")
+	if len(failedComponents) > 0 {
+		ui.Warning("开发环境配置部分组件安装或启动失败:")
+		for _, comp := range failedComponents {
+			fmt.Printf("  - %s\n", ui.Red(comp))
+		}
+	} else {
+		ui.Success("开发环境配置完成！")
+	}
 	fmt.Println()
 	ui.Info("提示:")
 	ui.Info("  - 运行 'envkit detect' 查看已安装的工具")

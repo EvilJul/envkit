@@ -30,21 +30,22 @@ func (n *NodeInstaller) Install(version string) error {
 	switch runtime.GOOS {
 	case "darwin":
 		err = n.installWithBrew(version)
-		if err == nil {
-			RecordInstallation("node", "language", version, nil, []string{"# added by envkit"})
-		}
 	case "linux":
 		err = n.installWithFnm(version)
-		if err == nil {
-			RecordInstallation("node", "language", version, []string{"~/.fnm", "~/.local/share/fnm"}, []string{"# fnm integration", "# added by envkit"})
-		}
 	case "windows":
 		err = n.installWithWinget(version)
-		if err == nil {
-			RecordInstallation("node", "language", version, nil, nil)
-		}
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+
+	if err == nil || n.IsInstalled() {
+		switch runtime.GOOS {
+		case "linux":
+			RecordInstallation("node", "language", version, []string{"~/.fnm", "~/.local/share/fnm"}, []string{"# fnm integration", "# added by envkit"})
+		default:
+			RecordInstallation("node", "language", version, nil, []string{"# added by envkit"})
+		}
+		return nil
 	}
 	return err
 }
@@ -133,21 +134,22 @@ func (p *PythonInstaller) Install(version string) error {
 	switch runtime.GOOS {
 	case "darwin":
 		err = p.installWithBrew(version)
-		if err == nil {
-			RecordInstallation("python", "language", version, nil, []string{"# added by envkit"})
-		}
 	case "linux":
 		err = p.installWithUv(version)
-		if err == nil {
-			RecordInstallation("python", "language", version, []string{"~/.local/bin/uv", "~/.local/bin/uvx", "~/.local/share/uv"}, []string{"# added by envkit"})
-		}
 	case "windows":
 		err = p.installWithWinget(version)
-		if err == nil {
-			RecordInstallation("python", "language", version, nil, nil)
-		}
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+
+	if err == nil || p.IsInstalled() {
+		switch runtime.GOOS {
+		case "linux":
+			RecordInstallation("python", "language", version, []string{"~/.local/bin/uv", "~/.local/bin/uvx", "~/.local/share/uv"}, []string{"# added by envkit"})
+		default:
+			RecordInstallation("python", "language", version, nil, []string{"# added by envkit"})
+		}
+		return nil
 	}
 	return err
 }
@@ -233,18 +235,22 @@ func (g *GoInstaller) Install(version string) error {
 	var err error
 	switch runtime.GOOS {
 	case "darwin":
-		return g.installWithBrew(version)
+		err = g.installWithBrew(version)
 	case "linux":
-		return g.installFromSource(version)
+		err = g.installFromSource(version)
 	case "windows":
 		err = g.installWithWinget(version)
-		if err == nil {
-			RecordInstallation("go", "language", version, nil, nil)
-		}
-		return err
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
+
+	if err == nil || g.IsInstalled() {
+		if err != nil {
+			RecordInstallation("go", "language", version, nil, []string{"# added by envkit"})
+		}
+		return nil
+	}
+	return err
 }
 
 func (g *GoInstaller) installWithBrew(version string) error {
@@ -378,6 +384,7 @@ func (r *RustInstaller) Install(version string) error {
 	defer spinner.Stop()
 
 	// Rust 通常通过 rustup 安装
+	var err error
 	if !commandExists("rustup") {
 		ui.Info("正在安装 rustup...")
 		var cmd *exec.Cmd
@@ -390,30 +397,40 @@ func (r *RustInstaller) Install(version string) error {
 			"RUSTUP_DIST_SERVER=https://rsproxy.cn",
 			"RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
 		)
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("安装 rustup 失败: %w", err)
+		err = cmd.Run()
+		if err != nil {
+			if !r.IsInstalled() {
+				return fmt.Errorf("安装 rustup 失败: %w", err)
+			}
 		}
 
-		if err := locateAndAddRustupToPath(); err != nil {
-			return err
+		if err == nil {
+			if err = locateAndAddRustupToPath(); err != nil {
+				if !r.IsInstalled() {
+					return err
+				}
+			}
 		}
 	}
 
-	// 安装指定版本
-	cmd := exec.Command("rustup", "install", version)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(),
-		"RUSTUP_DIST_SERVER=https://rsproxy.cn",
-		"RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
-	)
-	if err := cmd.Run(); err != nil {
-		return err
+	if commandExists("rustup") {
+		// 安装指定版本
+		cmd := exec.Command("rustup", "install", version)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Env = append(os.Environ(),
+			"RUSTUP_DIST_SERVER=https://rsproxy.cn",
+			"RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
+		)
+		err = cmd.Run()
 	}
 
-	paths := []string{"~/.cargo", "~/.rustup"}
-	RecordInstallation("rust", "language", version, paths, []string{"# added by envkit"})
-	return nil
+	if err == nil || r.IsInstalled() {
+		paths := []string{"~/.cargo", "~/.rustup"}
+		RecordInstallation("rust", "language", version, paths, []string{"# added by envkit"})
+		return nil
+	}
+	return err
 }
 
 func (r *RustInstaller) IsInstalled() bool {
@@ -466,19 +483,21 @@ func (j *JavaInstaller) Install(version string) error {
 	var err error
 	switch runtime.GOOS {
 	case "darwin", "linux":
-		// 使用 SDKMAN! 安装 Java
 		err = j.installWithSdkman(version)
-		if err == nil {
-			RecordInstallation("java", "language", version, []string{"~/.sdkman"}, []string{"SDKMAN_DIR", "sdkman-init.sh"})
-		}
 	case "windows":
-		// 使用 Winget 安装 Microsoft OpenJDK
 		err = exec.Command("winget", "install", "Microsoft.OpenJDK."+version).Run()
-		if err == nil {
-			RecordInstallation("java", "language", version, nil, nil)
-		}
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+
+	if err == nil || j.IsInstalled() {
+		switch runtime.GOOS {
+		case "darwin", "linux":
+			RecordInstallation("java", "language", version, []string{"~/.sdkman"}, []string{"SDKMAN_DIR", "sdkman-init.sh"})
+		default:
+			RecordInstallation("java", "language", version, nil, nil)
+		}
+		return nil
 	}
 	return err
 }
@@ -570,19 +589,21 @@ func (b *BunInstaller) Install(version string) error {
 	var err error
 	switch runtime.GOOS {
 	case "darwin", "linux":
-		// 使用官方 curl 脚本安装 Bun
 		err = b.installWithCurl()
-		if err == nil {
-			RecordInstallation("bun", "language", version, []string{"~/.bun"}, []string{"# bun", "BUN_INSTALL"})
-		}
 	case "windows":
-		// 使用 Winget 安装 Bun
 		err = exec.Command("winget", "install", "Jarred-Sumner.Bun").Run()
-		if err == nil {
-			RecordInstallation("bun", "language", version, nil, nil)
-		}
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+
+	if err == nil || b.IsInstalled() {
+		switch runtime.GOOS {
+		case "darwin", "linux":
+			RecordInstallation("bun", "language", version, []string{"~/.bun"}, []string{"# bun", "BUN_INSTALL"})
+		default:
+			RecordInstallation("bun", "language", version, nil, nil)
+		}
+		return nil
 	}
 	return err
 }
