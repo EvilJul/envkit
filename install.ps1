@@ -1,4 +1,4 @@
-# EnvKit Windows 安装脚本
+﻿# EnvKit Windows 安装脚本
 # 用法: 在 PowerShell 中运行: .\install.ps1
 
 $ErrorActionPreference = "Stop"
