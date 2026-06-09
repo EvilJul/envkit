@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/fusheng/envkit/internal/config"
 	"github.com/fusheng/envkit/internal/detector"
@@ -28,8 +30,12 @@ func main() {
 	switch command {
 	case "init":
 		handleInit()
+	case "list":
+		handleList()
 	case "install":
 		handleInstall()
+	case "uninstall":
+		handleUninstall()
 	case "detect":
 		handleDetect()
 	case "mirror":
@@ -92,21 +98,33 @@ func handleInit() {
 }
 
 func handleInstall() {
-	configFile := "dev-env.yaml"
+	configFile := ""
+	hasFileArg := false
 
 	// 解析命令行参数
 	for i, arg := range os.Args {
 		if arg == "-f" || arg == "--file" {
 			if i+1 < len(os.Args) {
 				configFile = os.Args[i+1]
+				hasFileArg = true
 			}
+		}
+	}
+
+	// 如果没有指定配置文件参数，则尝试使用默认文件，没有默认文件则开启交互式安装
+	if !hasFileArg {
+		if _, err := os.Stat("dev-env.yaml"); err == nil {
+			configFile = "dev-env.yaml"
+		} else {
+			handleInteractiveInstall()
+			return
 		}
 	}
 
 	// 检查配置文件是否存在
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 		ui.Error("配置文件不存在: %s", configFile)
-		ui.Info("提示: 先运行 'envkit init' 生成配置文件")
+		ui.Info("提示: 先运行 'envkit init' 生成配置文件，或直接运行 'envkit install' 开启交互式安装")
 		os.Exit(1)
 	}
 
@@ -118,6 +136,127 @@ func handleInstall() {
 		os.Exit(1)
 	}
 
+	runInstallation(cfg)
+}
+
+func handleInteractiveInstall() {
+	ui.PrintHeader("交互式开发环境安装程序")
+	fmt.Println("请选择您要安装的组件 (多选，输入数字编号并用空格或逗号分隔，如 '1 3'):")
+	fmt.Println()
+
+	options := []struct {
+		name     string
+		key      string
+		category string // "language", "tool", "database"
+		version  string
+	}{
+		{"Node.js", "node", "language", "20.11.1"},
+		{"Python", "python", "language", "3.10.11"},
+		{"Go", "go", "language", "1.22.0"},
+		{"Rust", "rust", "language", "stable"},
+		{"Java (JDK)", "java", "language", "21"},
+		{"Bun", "bun", "language", "latest"},
+		{"Git", "git", "tool", ""},
+		{"Docker", "docker", "tool", ""},
+		{"VSCode", "vscode", "tool", ""},
+		{"Miniconda", "miniconda", "tool", ""},
+		{"Kubectl", "kubectl", "tool", ""},
+		{"Minikube", "minikube", "tool", ""},
+		{"Redis", "redis", "database", "7"},
+		{"MySQL", "mysql", "database", "8.0"},
+	}
+
+	for i, opt := range options {
+		typeStr := "工具"
+		if opt.category == "language" {
+			typeStr = "语言"
+		} else if opt.category == "database" {
+			typeStr = "数据库"
+		}
+		if opt.version != "" {
+			fmt.Printf("  %2d) %-12s (%s) [默认版本: %s]\n", i+1, opt.name, typeStr, opt.version)
+		} else {
+			fmt.Printf("  %2d) %-12s (%s)\n", i+1, opt.name, typeStr)
+		}
+	}
+	fmt.Println()
+
+	fmt.Print("请输入选项 (如 '1, 3 5'): ")
+
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+
+	input = strings.ReplaceAll(input, ",", " ")
+	tokens := strings.Fields(input)
+
+	var languages []config.Language
+	var tools []string
+	var databases []config.Database
+
+	for _, token := range tokens {
+		var index int
+		_, err := fmt.Sscanf(token, "%d", &index)
+		if err != nil || index < 1 || index > len(options) {
+			continue
+		}
+
+		opt := options[index-1]
+		if opt.category == "language" {
+			languages = append(languages, config.Language{
+				Name:    opt.key,
+				Version: opt.version,
+			})
+		} else if opt.category == "tool" {
+			tools = append(tools, opt.key)
+		} else if opt.category == "database" {
+			databases = append(databases, config.Database{
+				Name:    opt.key,
+				Version: opt.version,
+				Docker:  true,
+			})
+		}
+	}
+
+	if len(languages) == 0 && len(tools) == 0 && len(databases) == 0 {
+		ui.Warning("您没有选择任何有效的组件进行安装。")
+		return
+	}
+
+	// 确认安装
+	fmt.Println()
+	ui.PrintSection("待安装的组件")
+	for _, lang := range languages {
+		fmt.Printf("  - %s (版本: %s)\n", ui.Cyan(lang.Name), lang.Version)
+	}
+	for _, tool := range tools {
+		fmt.Printf("  - %s\n", ui.Cyan(tool))
+	}
+	for _, db := range databases {
+		fmt.Printf("  - %s (数据库容器, 版本: %s)\n", ui.Cyan(db.Name), db.Version)
+	}
+	fmt.Println()
+
+	fmt.Print("是否开始安装? (y/N): ")
+	var confirm string
+	fmt.Scanln(&confirm)
+	if confirm != "y" && confirm != "Y" {
+		ui.Info("安装已取消。")
+		return
+	}
+
+	cfg := &config.Config{
+		Version:   "0.2.0",
+		Name:      "交互式选择环境",
+		Languages: languages,
+		Tools:     tools,
+		Databases: databases,
+	}
+
+	runInstallation(cfg)
+}
+
+func runInstallation(cfg *config.Config) {
 	ui.PrintHeader("正在安装: " + cfg.Name)
 
 	// 检测系统
@@ -266,6 +405,53 @@ func handleInstall() {
 	ui.Info("  - 运行 'envkit docker list' 查看运行中的容器")
 }
 
+func handleList() {
+	ui.PrintHeader("支持的一键安装环境与开发工具列表")
+
+	languages := detector.DetectLanguages()
+	tools := detector.DetectTools()
+
+	ui.PrintSection("编程语言 (Languages)")
+	langTable := ui.NewTable("名称", "默认版本", "当前状态", "安装源 / 说明")
+	langTable.AddRow("node", "20.11.1", getStatusString(languages["node"]), "Fast Node Manager (fnm)")
+	langTable.AddRow("python", "3.10.11", getStatusString(languages["python"]), "Astral uv")
+	langTable.AddRow("go", "1.22.0", getStatusString(languages["go"]), "官方包或 Homebrew")
+	langTable.AddRow("rust", "stable", getStatusString(languages["rustc"]), "rustup 官方安装器")
+	langTable.AddRow("java", "21", getStatusString(languages["java"]), "SDKMAN! 或 Microsoft OpenJDK")
+	langTable.AddRow("bun", "latest", getStatusString(languages["bun"]), "Bun 官方安装器")
+	langTable.Render()
+
+	ui.PrintSection("开发工具 (Tools)")
+	toolTable := ui.NewTable("名称", "当前状态", "说明")
+	toolTable.AddRow("git", getStatusString(tools["git"]), "版本控制系统")
+	toolTable.AddRow("docker", getStatusString(tools["docker"]), "应用容器引擎")
+	toolTable.AddRow("vscode", getStatusString(tools["code"]), "Visual Studio Code 编辑器")
+	toolTable.AddRow("miniconda", getStatusString(tools["conda"]), "Conda 虚拟环境与包管理器 (清华源)")
+	toolTable.AddRow("kubectl", getStatusString(tools["kubectl"]), "Kubernetes 命令行控制工具")
+	toolTable.AddRow("minikube", getStatusString(tools["minikube"]), "本地单节点 Kubernetes 集群运行工具")
+	toolTable.Render()
+
+	ui.PrintSection("数据库容器 (Databases via Docker)")
+	dbTable := ui.NewTable("名称", "默认版本", "说明")
+	dbTable.AddRow("postgresql", "16", "PostgreSQL 关系型数据库")
+	dbTable.AddRow("redis", "7", "Redis 键值内存数据库")
+	dbTable.AddRow("mysql", "8.0", "MySQL 关系型数据库")
+	dbTable.AddRow("mongodb", "6.0", "MongoDB 文档型数据库")
+	dbTable.Render()
+
+	fmt.Println()
+	ui.Info("提示:")
+	ui.Info("  - 运行 'envkit install' 可进入交互式菜单，选择单/多语言及工具进行一键安装")
+	ui.Info("  - 运行 'envkit install -f <config.yaml>' 按照配置文件进行非交互式安装")
+}
+
+func getStatusString(tool *detector.Tool) string {
+	if tool != nil && tool.Installed {
+		return ui.Green("✓ 已安装 (" + tool.Version + ")")
+	}
+	return ui.Yellow("✗ 未安装")
+}
+
 func handleDetect() {
 	ui.PrintHeader("系统环境检测")
 
@@ -376,7 +562,9 @@ func printUsage() {
 
 	fmt.Println(ui.Bold("命令:"))
 	fmt.Println("  init                        交互式生成配置文件")
-	fmt.Println("  install [-f file]           安装开发环境 (默认: dev-env.yaml)")
+	fmt.Println("  list                        列出所有支持的一键安装环境与工具状态")
+	fmt.Println("  install [-f file]           安装开发环境 (不指定 -f 且无默认配置时开启交互式安装)")
+	fmt.Println("  uninstall [component]       卸载已安装的组件及配置 (不指定组件时开启交互式卸载)")
 	fmt.Println("  detect                      检测当前系统已安装的工具")
 	fmt.Println("  mirror <lang> [name]        单独配置某个语言的镜像源")
 	fmt.Println("  docker <subcommand>         管理 Docker 容器")
@@ -393,8 +581,12 @@ func printUsage() {
 
 	fmt.Println(ui.Bold("示例:"))
 	fmt.Println("  envkit init                         # 生成配置文件")
-	fmt.Println("  envkit install                      # 使用默认配置安装")
-	fmt.Println("  envkit install -f custom.yaml       # 使用自定义配置")
+	fmt.Println("  envkit list                         # 列出支持的环境列表")
+	fmt.Println("  envkit install                      # 交互式选择组件安装")
+	fmt.Println("  envkit install -f custom.yaml       # 使用自定义配置文件安装")
+	fmt.Println("  envkit uninstall                    # 交互式选择组件卸载")
+	fmt.Println("  envkit uninstall node               # 卸载 Node.js 并清理环境变量")
+	fmt.Println("  envkit uninstall --all              # 卸载所有组件并清理环境配置")
 	fmt.Println("  envkit detect                       # 检测系统环境")
 	fmt.Println("  envkit mirror npm npmmirror         # 配置npm镜像源")
 	fmt.Println("  envkit docker start postgres 16     # 启动 PostgreSQL")
@@ -503,5 +695,147 @@ func handleDocker() {
 	default:
 		ui.Error("未知子命令: %s", subcommand)
 		os.Exit(1)
+	}
+}
+
+func handleUninstall() {
+	m, err := installer.LoadManifest()
+	if err != nil {
+		ui.Error("加载清单失败: %v", err)
+		os.Exit(1)
+	}
+
+	if len(m.Items) == 0 {
+		ui.Info("清单中没有通过 EnvKit 安装的组件记录。")
+		return
+	}
+
+	// 1. 如果提供了参数
+	if len(os.Args) >= 3 {
+		arg := os.Args[2]
+		if arg == "--all" || arg == "-a" {
+			// 询问确认
+			fmt.Print(ui.Red("警告: 您将卸载通过 EnvKit 安装的所有组件及配置。确定继续吗? (y/N): "))
+			var confirm string
+			fmt.Scanln(&confirm)
+			if confirm != "y" && confirm != "Y" {
+				ui.Info("操作已取消。")
+				return
+			}
+
+			// 开始全部卸载
+			var names []string
+			for name := range m.Items {
+				names = append(names, name)
+			}
+
+			for _, name := range names {
+				if err := installer.UninstallComponent(name); err != nil {
+					ui.Error("卸载 %s 失败: %v", name, err)
+				}
+			}
+			return
+		}
+
+		// 卸载指定组件
+		name := strings.ToLower(arg)
+		if err := installer.UninstallComponent(name); err != nil {
+			ui.Error("%v", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// 2. 交互式卸载菜单
+	ui.PrintHeader("EnvKit 卸载中心")
+	fmt.Println("检测到以下通过 EnvKit 安装的组件:")
+	fmt.Println()
+
+	var names []string
+	for name := range m.Items {
+		names = append(names, name)
+	}
+
+	for i, name := range names {
+		item := m.Items[name]
+		typeStr := "工具"
+		if item.Type == "language" {
+			typeStr = "语言"
+		}
+		fmt.Printf("  %d) %-10s (%s) [版本: %s, 安装时间: %s]\n", 
+			i+1, name, typeStr, item.Version, item.InstalledAt.Format("2006-01-02 15:04:05"))
+	}
+	fmt.Printf("  %d) 卸载所有组件 (--all)\n", len(names)+1)
+	fmt.Println()
+
+	fmt.Print("请输入要卸载的组件选项 (如 '1, 2'，直接回车取消): ")
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+	input = strings.ReplaceAll(input, ",", " ")
+	tokens := strings.Fields(input)
+
+	if len(tokens) == 0 {
+		ui.Info("未选择任何组件。")
+		return
+	}
+
+	var toUninstall []string
+	uninstallAll := false
+
+	for _, token := range tokens {
+		var index int
+		_, err := fmt.Sscanf(token, "%d", &index)
+		if err != nil || index < 1 || index > len(names)+1 {
+			continue
+		}
+
+		if index == len(names)+1 {
+			uninstallAll = true
+			break
+		}
+		toUninstall = append(toUninstall, names[index-1])
+	}
+
+	if uninstallAll {
+		fmt.Print(ui.Red("警告: 您将卸载通过 EnvKit 安装的所有组件及配置。确定继续吗? (y/N): "))
+		var confirm string
+		fmt.Scanln(&confirm)
+		if confirm != "y" && confirm != "Y" {
+			ui.Info("操作已取消。")
+			return
+		}
+		for _, name := range names {
+			if err := installer.UninstallComponent(name); err != nil {
+				ui.Error("卸载 %s 失败: %v", name, err)
+			}
+		}
+		return
+	}
+
+	if len(toUninstall) == 0 {
+		ui.Warning("您没有选择任何有效的组件进行卸载。")
+		return
+	}
+
+	fmt.Println()
+	ui.PrintSection("待卸载的组件")
+	for _, name := range toUninstall {
+		fmt.Printf("  - %s\n", ui.Red(name))
+	}
+	fmt.Println()
+
+	fmt.Print("是否开始卸载? (y/N): ")
+	var confirm string
+	fmt.Scanln(&confirm)
+	if confirm != "y" && confirm != "Y" {
+		ui.Info("卸载已取消。")
+		return
+	}
+
+	for _, name := range toUninstall {
+		if err := installer.UninstallComponent(name); err != nil {
+			ui.Error("卸载 %s 失败: %v", name, err)
+		}
 	}
 }

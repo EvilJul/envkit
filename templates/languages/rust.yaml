@@ -1,0 +1,18 @@
+version: "1.0"
+name: "Rust Development Environment"
+
+languages:
+  - name: rust
+    version: "stable"
+    mirror: ustc
+
+tools:
+  - git
+  - vscode
+
+databases: []
+
+shell:
+  type: zsh
+  plugins:
+    - oh-my-zsh

@@ -1,0 +1,15 @@
+version: "1.0"
+name: "Bun Development Environment"
+
+languages:
+  - name: bun
+    version: "latest"
+
+tools:
+  - git
+  - vscode
+
+databases: []
+
+shell:
+  type: zsh

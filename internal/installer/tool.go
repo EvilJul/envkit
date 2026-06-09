@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/fusheng/envkit/internal/ui"
 )
@@ -24,16 +26,22 @@ func (g *GitInstaller) Install() error {
 	spinner.Start()
 	defer spinner.Stop()
 
+	var err error
 	switch runtime.GOOS {
 	case "darwin":
-		return installWithBrew("git")
+		err = installWithBrew("git")
 	case "linux":
-		return installWithApt("git")
+		err = installWithApt("git")
 	case "windows":
-		return installWithWinget("Git.Git")
+		err = installWithWinget("Git.Git")
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
+
+	if err == nil {
+		RecordInstallation("git", "tool", "latest", nil, nil)
+	}
+	return err
 }
 
 func (g *GitInstaller) IsInstalled() bool {
@@ -129,6 +137,7 @@ func (d *DockerInstaller) installOnLinux() error {
 	}
 
 	ui.Success("Docker 安装成功！")
+	RecordInstallation("docker", "tool", "latest", nil, nil)
 	ui.Info("提示: 运行 'sudo usermod -aG docker $USER' 将当前用户添加到 docker 组")
 	return nil
 }
@@ -154,16 +163,85 @@ func (v *VSCodeInstaller) Install() error {
 	spinner.Start()
 	defer spinner.Stop()
 
+	var err error
 	switch runtime.GOOS {
 	case "darwin":
-		return installWithBrew("--cask", "visual-studio-code")
+		err = v.installOnDarwin()
+		if err == nil {
+			RecordInstallation("vscode", "tool", "stable", []string{"/Applications/Visual Studio Code.app", "~/.local/bin/code", "/usr/local/bin/code"}, nil)
+		}
 	case "linux":
-		return v.installOnLinux()
+		err = v.installOnLinux()
+		if err == nil {
+			RecordInstallation("vscode", "tool", "stable", nil, nil)
+		}
 	case "windows":
-		return installWithWinget("Microsoft.VisualStudioCode")
+		err = installWithWinget("Microsoft.VisualStudioCode")
+		if err == nil {
+			RecordInstallation("vscode", "tool", "stable", nil, nil)
+		}
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
+	return err
+}
+
+func (v *VSCodeInstaller) installOnDarwin() error {
+	// 尝试通过 Homebrew Cask 安装
+	err := installWithBrew("--cask", "visual-studio-code")
+	if err == nil {
+		return nil
+	}
+
+	// 备用方案：直接从 VSCode 官网下载 zip 并安装
+	ui.Warning("通过 Homebrew Cask 安装 VSCode 失败 (%v)，正在尝试直接从官方下载...", err)
+
+	downloadURL := "https://update.code.visualstudio.com/latest/darwin-universal/stable"
+	zipPath := "/tmp/vscode.zip"
+
+	downloadCmd := exec.Command("curl", "-L", "-o", zipPath, downloadURL)
+	if err := downloadCmd.Run(); err != nil {
+		return fmt.Errorf("下载 VSCode 失败: %w", err)
+	}
+
+	// 解压
+	unzipCmd := exec.Command("unzip", "-q", zipPath, "-d", "/tmp/vscode-extracted")
+	if err := unzipCmd.Run(); err != nil {
+		os.Remove(zipPath)
+		return fmt.Errorf("解压 VSCode 失败: %w", err)
+	}
+
+	// 移动至 /Applications
+	destPath := "/Applications/Visual Studio Code.app"
+	_ = exec.Command("rm", "-rf", destPath).Run()
+
+	moveCmd := exec.Command("mv", "/tmp/vscode-extracted/Visual Studio Code.app", destPath)
+	if err := moveCmd.Run(); err != nil {
+		// 备用 sudo 移动
+		_ = exec.Command("sudo", "mv", "/tmp/vscode-extracted/Visual Studio Code.app", destPath).Run()
+	}
+
+	// 移除 macOS quarantine 属性，防止首次运行时 Gatekeeper 弹窗阻塞终端
+	_ = exec.Command("xattr", "-cr", destPath).Run()
+
+	// 清理
+	os.Remove(zipPath)
+	_ = exec.Command("rm", "-rf", "/tmp/vscode-extracted").Run()
+
+	// 自动创建 code 软链接至 ~/.local/bin，以实现终端 code 命令可用
+	home, errHome := os.UserHomeDir()
+	if errHome == nil {
+		localBin := filepath.Join(home, ".local", "bin")
+		_ = os.MkdirAll(localBin, 0755)
+		linkPath := filepath.Join(localBin, "code")
+		_ = exec.Command("rm", "-f", linkPath).Run()
+		_ = exec.Command("ln", "-s", "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code", linkPath).Run()
+
+		// 同时尝试软链到 /usr/local/bin (如果可用)
+		_ = exec.Command("ln", "-s", "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code", "/usr/local/bin/code").Run()
+	}
+
+	return nil
 }
 
 func (v *VSCodeInstaller) installOnLinux() error {
@@ -251,7 +329,353 @@ func GetToolInstaller(tool string) ToolInstaller {
 		return &DockerInstaller{}
 	case "vscode", "code":
 		return &VSCodeInstaller{}
+	case "miniconda", "conda":
+		return &MinicondaInstaller{}
+	case "kubectl":
+		return &KubectlInstaller{}
+	case "minikube":
+		return &MinikubeInstaller{}
 	default:
 		return nil
 	}
+}
+
+// MinicondaInstaller Miniconda 安装器
+type MinicondaInstaller struct{}
+
+func (m *MinicondaInstaller) Install() error {
+	spinner := ui.NewSpinner("正在安装 Miniconda")
+	spinner.Start()
+	defer spinner.Stop()
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	prefix := filepath.Join(home, "miniconda3")
+
+	// 1. 下载并安装
+	if err := m.installMiniconda(prefix); err != nil {
+		return err
+	}
+
+	// 2. 配置清华镜像源 (.condarc)
+	if err := m.configureTsinghuaMirror(); err != nil {
+		ui.Warning("配置清华镜像源失败: %v", err)
+	}
+
+	// 3. 配置环境变量
+	binDir := filepath.Join(prefix, "bin")
+	if runtime.GOOS == "windows" {
+		binDir = filepath.Join(prefix, "Scripts")
+	}
+	AddDirToPath(binDir)
+	_ = PersistPathEnv(binDir)
+
+	// 运行 conda init
+	condaBin := filepath.Join(binDir, "conda")
+	if runtime.GOOS == "windows" {
+		condaBin = filepath.Join(prefix, "condabin", "conda.bat")
+	}
+
+	initCmd := exec.Command(condaBin, "init", "--all")
+	_ = initCmd.Run()
+
+	RecordInstallation("miniconda", "tool", "latest", []string{"~/miniconda3", "~/.condarc"}, []string{"# >>> conda initialize >>>", "# added by envkit"})
+
+	return nil
+}
+
+func (m *MinicondaInstaller) installMiniconda(prefix string) error {
+	var downloadURL string
+	arch := runtime.GOARCH
+
+	switch runtime.GOOS {
+	case "darwin":
+		if arch == "arm64" {
+			downloadURL = "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-MacOSX-arm64.sh"
+		} else {
+			downloadURL = "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-MacOSX-x86_64.sh"
+		}
+		return m.installUnix(downloadURL, prefix)
+
+	case "linux":
+		if arch == "arm64" {
+			downloadURL = "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-aarch64.sh"
+		} else {
+			downloadURL = "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh"
+		}
+		return m.installUnix(downloadURL, prefix)
+
+	case "windows":
+		downloadURL = "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Windows-x86_64.exe"
+		return m.installWindows(downloadURL, prefix)
+
+	default:
+		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+}
+
+func (m *MinicondaInstaller) installUnix(downloadURL, prefix string) error {
+	shPath := "/tmp/miniconda.sh"
+
+	// 下载安装脚本
+	downloadCmd := exec.Command("curl", "-fsSL", "-o", shPath, downloadURL)
+	if err := downloadCmd.Run(); err != nil {
+		return fmt.Errorf("下载 Miniconda 失败: %w", err)
+	}
+	defer os.Remove(shPath)
+
+	// 静默安装
+	_ = os.RemoveAll(prefix)
+	installCmd := exec.Command("sh", shPath, "-b", "-p", prefix)
+	if err := installCmd.Run(); err != nil {
+		return fmt.Errorf("执行 Miniconda 安装脚本失败: %w", err)
+	}
+
+	return nil
+}
+
+func (m *MinicondaInstaller) installWindows(downloadURL, prefix string) error {
+	exePath := filepath.Join(os.Getenv("TEMP"), "miniconda.exe")
+
+	// 下载安装包
+	downloadCmd := exec.Command("curl", "-fsSL", "-o", exePath, downloadURL)
+	if err := downloadCmd.Run(); err != nil {
+		return fmt.Errorf("下载 Miniconda 失败: %w", err)
+	}
+	defer os.Remove(exePath)
+
+	// 静默安装
+	_ = os.RemoveAll(prefix)
+	installCmd := exec.Command(exePath, "/S", "/RegisterPython=0", "/D="+prefix)
+	if err := installCmd.Run(); err != nil {
+		return fmt.Errorf("执行 Miniconda 安装程序失败: %w", err)
+	}
+
+	return nil
+}
+
+func (m *MinicondaInstaller) configureTsinghuaMirror() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	condarcPath := filepath.Join(home, ".condarc")
+
+	content := `channels:
+  - defaults
+show_channel_urls: true
+default_channels:
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2
+custom_channels:
+  conda-forge: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  msys2: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  bioconda: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  menpo: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  pytorch: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  pytorch-lts: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  simpleitk: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  deepmodeling: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/
+`
+	return os.WriteFile(condarcPath, []byte(content), 0644)
+}
+
+func (m *MinicondaInstaller) IsInstalled() bool {
+	return commandExists("conda")
+}
+
+func (m *MinicondaInstaller) GetVersion() string {
+	cmd := exec.Command("conda", "--version")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
+}
+
+// KubectlInstaller Kubectl 安装器
+type KubectlInstaller struct{}
+
+func (k *KubectlInstaller) Install() error {
+	spinner := ui.NewSpinner("正在安装 kubectl")
+	spinner.Start()
+	defer spinner.Stop()
+
+	var err error
+	switch runtime.GOOS {
+	case "darwin":
+		err = k.installOnDarwin()
+		if err == nil {
+			RecordInstallation("kubectl", "tool", "v1.30.0", []string{"~/.local/bin/kubectl"}, []string{"# added by envkit"})
+		}
+	case "linux":
+		err = k.installOnLinux()
+		if err == nil {
+			RecordInstallation("kubectl", "tool", "v1.30.0", []string{"~/.local/bin/kubectl"}, []string{"# added by envkit"})
+		}
+	case "windows":
+		err = installWithWinget("Kubernetes.kubectl")
+		if err == nil {
+			RecordInstallation("kubectl", "tool", "v1.30.0", nil, nil)
+		}
+	default:
+		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+	return err
+}
+
+func (k *KubectlInstaller) installOnDarwin() error {
+	err := installWithBrew("kubernetes-cli")
+	if err == nil {
+		return nil
+	}
+
+	ui.Warning("通过 Homebrew 安装 kubectl 失败 (%v)，正在尝试直接下载...", err)
+	arch := runtime.GOARCH
+	downloadURL := fmt.Sprintf("https://dl.k8s.io/release/v1.30.0/bin/darwin/%s/kubectl", arch)
+	return k.downloadAndInstallUnix(downloadURL)
+}
+
+func (k *KubectlInstaller) installOnLinux() error {
+	arch := runtime.GOARCH
+	downloadURL := fmt.Sprintf("https://dl.k8s.io/release/v1.30.0/bin/linux/%s/kubectl", arch)
+	return k.downloadAndInstallUnix(downloadURL)
+}
+
+func (k *KubectlInstaller) downloadAndInstallUnix(downloadURL string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	binDir := filepath.Join(home, ".local", "bin")
+	_ = os.MkdirAll(binDir, 0755)
+
+	destPath := filepath.Join(binDir, "kubectl")
+	downloadCmd := exec.Command("curl", "-fsSL", "-o", destPath, downloadURL)
+	if err := downloadCmd.Run(); err != nil {
+		return fmt.Errorf("下载 kubectl 失败: %w", err)
+	}
+
+	if err := os.Chmod(destPath, 0755); err != nil {
+		return fmt.Errorf("为 kubectl 赋予执行权限失败: %w", err)
+	}
+
+	AddDirToPath(binDir)
+	_ = PersistPathEnv(binDir)
+	return nil
+}
+
+func (k *KubectlInstaller) IsInstalled() bool {
+	return commandExists("kubectl")
+}
+
+func (k *KubectlInstaller) GetVersion() string {
+	cmd := exec.Command("kubectl", "version", "--client", "--output=yaml")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		cmd = exec.Command("kubectl", "version", "--client")
+		output, err = cmd.CombinedOutput()
+		if err != nil {
+			return ""
+		}
+	}
+
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "gitVersion:") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 2 {
+				return strings.Trim(parts[1], ` "'`)
+			}
+		}
+	}
+	return strings.TrimSpace(string(output))
+}
+
+// MinikubeInstaller Minikube 安装器
+type MinikubeInstaller struct{}
+
+func (m *MinikubeInstaller) Install() error {
+	spinner := ui.NewSpinner("正在安装 minikube")
+	spinner.Start()
+	defer spinner.Stop()
+
+	var err error
+	switch runtime.GOOS {
+	case "darwin":
+		err = m.installOnDarwin()
+		if err == nil {
+			RecordInstallation("minikube", "tool", "latest", []string{"~/.local/bin/minikube"}, []string{"# added by envkit"})
+		}
+	case "linux":
+		err = m.installOnLinux()
+		if err == nil {
+			RecordInstallation("minikube", "tool", "latest", []string{"~/.local/bin/minikube"}, []string{"# added by envkit"})
+		}
+	case "windows":
+		err = installWithWinget("Kubernetes.Minikube")
+		if err == nil {
+			RecordInstallation("minikube", "tool", "latest", nil, nil)
+		}
+	default:
+		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+	return err
+}
+
+func (m *MinikubeInstaller) installOnDarwin() error {
+	err := installWithBrew("minikube")
+	if err == nil {
+		return nil
+	}
+
+	ui.Warning("通过 Homebrew 安装 minikube 失败 (%v)，正在尝试直接下载...", err)
+	arch := runtime.GOARCH
+	downloadURL := fmt.Sprintf("https://storage.googleapis.com/minikube/releases/latest/minikube-darwin-%s", arch)
+	return m.downloadAndInstallUnix(downloadURL)
+}
+
+func (m *MinikubeInstaller) installOnLinux() error {
+	arch := runtime.GOARCH
+	downloadURL := fmt.Sprintf("https://storage.googleapis.com/minikube/releases/latest/minikube-linux-%s", arch)
+	return m.downloadAndInstallUnix(downloadURL)
+}
+
+func (m *MinikubeInstaller) downloadAndInstallUnix(downloadURL string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	binDir := filepath.Join(home, ".local", "bin")
+	_ = os.MkdirAll(binDir, 0755)
+
+	destPath := filepath.Join(binDir, "minikube")
+	downloadCmd := exec.Command("curl", "-fsSL", "-o", destPath, downloadURL)
+	if err := downloadCmd.Run(); err != nil {
+		return fmt.Errorf("下载 minikube 失败: %w", err)
+	}
+
+	if err := os.Chmod(destPath, 0755); err != nil {
+		return fmt.Errorf("为 minikube 赋予执行权限失败: %w", err)
+	}
+
+	AddDirToPath(binDir)
+	_ = PersistPathEnv(binDir)
+	return nil
+}
+
+func (m *MinikubeInstaller) IsInstalled() bool {
+	return commandExists("minikube")
+}
+
+func (m *MinikubeInstaller) GetVersion() string {
+	cmd := exec.Command("minikube", "version")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
 }

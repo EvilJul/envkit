@@ -1,0 +1,18 @@
+version: "1.0"
+name: "Java Development Environment"
+
+languages:
+  - name: java
+    version: "21"
+
+tools:
+  - git
+  - vscode
+
+databases:
+  - name: mysql
+    version: "8.0"
+    docker: true
+
+shell:
+  type: zsh

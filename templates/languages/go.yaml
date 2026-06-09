@@ -1,0 +1,18 @@
+version: "1.0"
+name: "Go Development Environment"
+
+languages:
+  - name: go
+    version: "1.22.0"
+    mirror: goproxy
+
+tools:
+  - git
+  - vscode
+
+databases: []
+
+shell:
+  type: zsh
+  plugins:
+    - oh-my-zsh

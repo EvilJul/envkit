@@ -1,0 +1,15 @@
+version: "1.0"
+name: "Miniconda Development Environment"
+
+languages: []
+
+tools:
+  - git
+  - miniconda
+
+databases: []
+
+shell:
+  type: zsh
+  plugins:
+    - oh-my-zsh

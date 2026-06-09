@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/fusheng/envkit/internal/ui"
 )
@@ -24,16 +26,27 @@ func (n *NodeInstaller) Install(version string) error {
 	spinner.Start()
 	defer spinner.Stop()
 
+	var err error
 	switch runtime.GOOS {
 	case "darwin":
-		return n.installWithBrew(version)
+		err = n.installWithBrew(version)
+		if err == nil {
+			RecordInstallation("node", "language", version, nil, []string{"# added by envkit"})
+		}
 	case "linux":
-		return n.installWithFnm(version)
+		err = n.installWithFnm(version)
+		if err == nil {
+			RecordInstallation("node", "language", version, []string{"~/.fnm", "~/.local/share/fnm"}, []string{"# fnm integration", "# added by envkit"})
+		}
 	case "windows":
-		return n.installWithWinget(version)
+		err = n.installWithWinget(version)
+		if err == nil {
+			RecordInstallation("node", "language", version, nil, nil)
+		}
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
+	return err
 }
 
 func (n *NodeInstaller) installWithBrew(version string) error {
@@ -52,9 +65,13 @@ func (n *NodeInstaller) installWithFnm(version string) error {
 	// 检查是否安装了 fnm
 	if !commandExists("fnm") {
 		ui.Info("正在安装 fnm (Fast Node Manager)...")
-		installCmd := exec.Command("curl", "-fsSL", "https://fnm.vercel.app/install", "|", "bash")
+		installCmd := exec.Command("sh", "-c", "curl -fsSL https://fnm.vercel.app/install | bash")
 		if err := installCmd.Run(); err != nil {
 			return fmt.Errorf("安装 fnm 失败: %w", err)
+		}
+		
+		if err := locateAndAddFnmToPath(); err != nil {
+			return err
 		}
 	}
 
@@ -68,7 +85,16 @@ func (n *NodeInstaller) installWithFnm(version string) error {
 
 	// 设置为默认版本
 	defaultCmd := exec.Command("fnm", "default", version)
-	return defaultCmd.Run()
+	if err := defaultCmd.Run(); err != nil {
+		return fmt.Errorf("设置默认 Node.js 版本失败: %w", err)
+	}
+
+	// 应用 fnm 环境变量到当前进程
+	if err := applyFnmEnv(); err != nil {
+		ui.Warning("应用 fnm 环境变量失败: %v", err)
+	}
+
+	return nil
 }
 
 func (n *NodeInstaller) installWithWinget(version string) error {
@@ -103,16 +129,27 @@ func (p *PythonInstaller) Install(version string) error {
 	spinner.Start()
 	defer spinner.Stop()
 
+	var err error
 	switch runtime.GOOS {
 	case "darwin":
-		return p.installWithBrew(version)
+		err = p.installWithBrew(version)
+		if err == nil {
+			RecordInstallation("python", "language", version, nil, []string{"# added by envkit"})
+		}
 	case "linux":
-		return p.installWithUv(version)
+		err = p.installWithUv(version)
+		if err == nil {
+			RecordInstallation("python", "language", version, []string{"~/.local/bin/uv", "~/.local/bin/uvx", "~/.local/share/uv"}, []string{"# added by envkit"})
+		}
 	case "windows":
-		return p.installWithWinget(version)
+		err = p.installWithWinget(version)
+		if err == nil {
+			RecordInstallation("python", "language", version, nil, nil)
+		}
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
+	return err
 }
 
 func (p *PythonInstaller) installWithBrew(version string) error {
@@ -130,9 +167,13 @@ func (p *PythonInstaller) installWithUv(version string) error {
 	// 检查是否安装了 uv
 	if !commandExists("uv") {
 		ui.Info("正在安装 uv (Python 包管理器)...")
-		installCmd := exec.Command("curl", "-LsSf", "https://astral.sh/uv/install.sh", "|", "sh")
+		installCmd := exec.Command("sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh")
 		if err := installCmd.Run(); err != nil {
 			return fmt.Errorf("安装 uv 失败: %w", err)
+		}
+		
+		if err := locateAndAddUvToPath(); err != nil {
+			return err
 		}
 	}
 
@@ -140,7 +181,16 @@ func (p *PythonInstaller) installWithUv(version string) error {
 	cmd := exec.Command("uv", "python", "install", version)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("安装 Python 失败: %w", err)
+	}
+
+	// 应用 uv python 环境变量到当前进程
+	if err := applyUvPythonEnv(version); err != nil {
+		ui.Warning("应用 uv python 环境变量失败: %v", err)
+	}
+
+	return nil
 }
 
 func (p *PythonInstaller) installWithWinget(version string) error {
@@ -180,13 +230,18 @@ func (g *GoInstaller) Install(version string) error {
 	spinner.Start()
 	defer spinner.Stop()
 
+	var err error
 	switch runtime.GOOS {
 	case "darwin":
 		return g.installWithBrew(version)
 	case "linux":
 		return g.installFromSource(version)
 	case "windows":
-		return g.installWithWinget(version)
+		err = g.installWithWinget(version)
+		if err == nil {
+			RecordInstallation("go", "language", version, nil, nil)
+		}
+		return err
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
@@ -194,21 +249,77 @@ func (g *GoInstaller) Install(version string) error {
 
 func (g *GoInstaller) installWithBrew(version string) error {
 	if !commandExists("brew") {
-		return fmt.Errorf("请先安装 Homebrew: https://brew.sh")
+		return g.installFromSourceDarwin(version)
 	}
 
-	cmd := exec.Command("brew", "install", "go@"+version)
+	// Homebrew uses major.minor version (e.g. go@1.22) instead of patch version (e.g. go@1.22.0)
+	brewVersion := version
+	parts := strings.Split(version, ".")
+	if len(parts) >= 2 {
+		brewVersion = parts[0] + "." + parts[1]
+	}
+
+	cmd := exec.Command("brew", "install", "go@"+brewVersion)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		ui.Warning("通过 Homebrew 安装 Go 失败 (%v)，正在尝试直接从官方镜像源下载...", err)
+		return g.installFromSourceDarwin(version)
+	}
+	locateAndAddBrewGoToPath(brewVersion)
+	RecordInstallation("go", "language", version, nil, []string{"# added by envkit"})
+	return nil
+}
+
+func (g *GoInstaller) installFromSourceDarwin(version string) error {
+	ui.Info("正在从官方镜像下载 Go %s...", version)
+
+	arch := runtime.GOARCH
+	downloadURL := fmt.Sprintf("https://golang.google.cn/dl/go%s.darwin-%s.tar.gz", version, arch)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	destDir := filepath.Join(home, ".local")
+	_ = os.MkdirAll(destDir, 0755)
+
+	tarPath := filepath.Join(destDir, "go.tar.gz")
+
+	downloadCmd := exec.Command("curl", "-fsSL", "-o", tarPath, downloadURL)
+	if err := downloadCmd.Run(); err != nil {
+		return fmt.Errorf("下载 Go 失败: %w", err)
+	}
+
+	ui.Info("正在解压安装...")
+	goDir := filepath.Join(destDir, "go")
+	_ = os.RemoveAll(goDir)
+
+	extractCmd := exec.Command("tar", "-C", destDir, "-xzf", tarPath)
+	if err := extractCmd.Run(); err != nil {
+		os.Remove(tarPath)
+		return fmt.Errorf("解压 Go 失败: %w", err)
+	}
+
+	os.Remove(tarPath)
+
+	binDir := filepath.Join(goDir, "bin")
+	AddDirToPath(binDir)
+	_ = PersistPathEnv(binDir)
+
+	RecordInstallation("go", "language", version, []string{"~/.local/go"}, []string{"# added by envkit"})
+
+	ui.Success("Go %s 安装成功并已配置环境变量！", version)
+	return nil
 }
 
 func (g *GoInstaller) installFromSource(version string) error {
-	ui.Info("从官方下载 Go %s...", version)
+	ui.Info("从官方镜像下载 Go %s...", version)
 
 	// 下载 Go 安装包
 	arch := runtime.GOARCH
-	downloadURL := fmt.Sprintf("https://go.dev/dl/go%s.linux-%s.tar.gz", version, arch)
+	downloadURL := fmt.Sprintf("https://golang.google.cn/dl/go%s.linux-%s.tar.gz", version, arch)
 
 	downloadCmd := exec.Command("curl", "-fsSL", "-o", "/tmp/go.tar.gz", downloadURL)
 	if err := downloadCmd.Run(); err != nil {
@@ -225,7 +336,12 @@ func (g *GoInstaller) installFromSource(version string) error {
 	// 清理临时文件
 	os.Remove("/tmp/go.tar.gz")
 
-	ui.Success("Go %s 安装成功！请将 /usr/local/go/bin 添加到 PATH", version)
+	AddDirToPath("/usr/local/go/bin")
+	_ = PersistPathEnv("/usr/local/go/bin")
+
+	RecordInstallation("go", "language", version, []string{"/usr/local/go"}, []string{"# added by envkit"})
+
+	ui.Success("Go %s 安装成功并已配置环境变量！", version)
 	return nil
 }
 
@@ -264,9 +380,22 @@ func (r *RustInstaller) Install(version string) error {
 	// Rust 通常通过 rustup 安装
 	if !commandExists("rustup") {
 		ui.Info("正在安装 rustup...")
-		installCmd := exec.Command("curl", "--proto", "=https", "--tlsv1.2", "-sSf", "https://sh.rustup.rs", "|", "sh", "-s", "--", "-y")
-		if err := installCmd.Run(); err != nil {
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command("winget", "install", "--id", "Rustlang.Rustup", "--silent", "--accept-package-agreements", "--accept-source-agreements")
+		} else {
+			cmd = exec.Command("sh", "-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y")
+		}
+		cmd.Env = append(os.Environ(),
+			"RUSTUP_DIST_SERVER=https://rsproxy.cn",
+			"RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
+		)
+		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("安装 rustup 失败: %w", err)
+		}
+
+		if err := locateAndAddRustupToPath(); err != nil {
+			return err
 		}
 	}
 
@@ -274,7 +403,17 @@ func (r *RustInstaller) Install(version string) error {
 	cmd := exec.Command("rustup", "install", version)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	cmd.Env = append(os.Environ(),
+		"RUSTUP_DIST_SERVER=https://rsproxy.cn",
+		"RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
+	)
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	paths := []string{"~/.cargo", "~/.rustup"}
+	RecordInstallation("rust", "language", version, paths, []string{"# added by envkit"})
+	return nil
 }
 
 func (r *RustInstaller) IsInstalled() bool {
@@ -307,7 +446,174 @@ func GetInstaller(language string) LanguageInstaller {
 		return &GoInstaller{}
 	case "rust":
 		return &RustInstaller{}
+	case "java", "jdk":
+		return &JavaInstaller{}
+	case "bun":
+		return &BunInstaller{}
 	default:
 		return nil
 	}
+}
+
+// JavaInstaller Java (JDK) 安装器
+type JavaInstaller struct{}
+
+func (j *JavaInstaller) Install(version string) error {
+	spinner := ui.NewSpinner("正在安装 Java (JDK) " + version)
+	spinner.Start()
+	defer spinner.Stop()
+
+	var err error
+	switch runtime.GOOS {
+	case "darwin", "linux":
+		// 使用 SDKMAN! 安装 Java
+		err = j.installWithSdkman(version)
+		if err == nil {
+			RecordInstallation("java", "language", version, []string{"~/.sdkman"}, []string{"SDKMAN_DIR", "sdkman-init.sh"})
+		}
+	case "windows":
+		// 使用 Winget 安装 Microsoft OpenJDK
+		err = exec.Command("winget", "install", "Microsoft.OpenJDK."+version).Run()
+		if err == nil {
+			RecordInstallation("java", "language", version, nil, nil)
+		}
+	default:
+		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+	return err
+}
+
+func (j *JavaInstaller) installWithSdkman(version string) error {
+	// 1. 检查并安装 SDKMAN!
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	sdkmanDir := filepath.Join(home, ".sdkman")
+	if _, err := os.Stat(sdkmanDir); os.IsNotExist(err) {
+		ui.Info("正在安装 SDKMAN!...")
+		cmd := exec.Command("sh", "-c", "curl -s \"https://get.sdkman.io\" | bash")
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("安装 SDKMAN! 失败: %w", err)
+		}
+	}
+
+	// 2. 映射版本名称。SDKMAN 上的版本名如 "21-open" (OpenJDK 21)
+	sdkVersion := version
+	if version == "21" || version == "17" || version == "11" || version == "8" {
+		sdkVersion = version + "-open"
+	}
+
+	ui.Info("正在使用 SDKMAN! 安装 Java %s...", sdkVersion)
+	installCmd := exec.Command("bash", "-c", fmt.Sprintf("source %s/.sdkman/bin/sdkman-init.sh && sdk install java %s", home, sdkVersion))
+	installCmd.Stdout = os.Stdout
+	installCmd.Stderr = os.Stderr
+	if err := installCmd.Run(); err != nil {
+		return fmt.Errorf("SDKMAN 安装 Java 失败: %w", err)
+	}
+
+	// 3. 配置环境变量
+	return persistSdkmanIntegration(home)
+}
+
+func persistSdkmanIntegration(home string) error {
+	files := []string{
+		filepath.Join(home, ".bashrc"),
+		filepath.Join(home, ".zshrc"),
+		filepath.Join(home, ".profile"),
+	}
+
+	integrationCmd := "\n# added by envkit (sdkman)\nexport SDKMAN_DIR=\"$HOME/.sdkman\"\n[[ -s \"$HOME/.sdkman/bin/sdkman-init.sh\" ]] && source \"$HOME/.sdkman/bin/sdkman-init.sh\"\n"
+
+	for _, file := range files {
+		if _, err := os.Stat(file); err == nil {
+			content, err := os.ReadFile(file)
+			if err == nil {
+				if !strings.Contains(string(content), "sdkman-init.sh") {
+					f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0644)
+					if err == nil {
+						_, _ = f.WriteString(integrationCmd)
+						_ = f.Close()
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (j *JavaInstaller) IsInstalled() bool {
+	return commandExists("java")
+}
+
+func (j *JavaInstaller) GetVersion() string {
+	cmd := exec.Command("java", "-version")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(output), "\n")
+	if len(lines) > 0 {
+		return strings.TrimSpace(lines[0])
+	}
+	return string(output)
+}
+
+// BunInstaller Bun 安装器
+type BunInstaller struct{}
+
+func (b *BunInstaller) Install(version string) error {
+	spinner := ui.NewSpinner("正在安装 Bun " + version)
+	spinner.Start()
+	defer spinner.Stop()
+
+	var err error
+	switch runtime.GOOS {
+	case "darwin", "linux":
+		// 使用官方 curl 脚本安装 Bun
+		err = b.installWithCurl()
+		if err == nil {
+			RecordInstallation("bun", "language", version, []string{"~/.bun"}, []string{"# bun", "BUN_INSTALL"})
+		}
+	case "windows":
+		// 使用 Winget 安装 Bun
+		err = exec.Command("winget", "install", "Jarred-Sumner.Bun").Run()
+		if err == nil {
+			RecordInstallation("bun", "language", version, nil, nil)
+		}
+	default:
+		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+	return err
+}
+
+func (b *BunInstaller) installWithCurl() error {
+	cmd := exec.Command("sh", "-c", "curl -fsSL https://bun.sh/install | bash")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("安装 Bun 失败: %w", err)
+	}
+
+	// 将 ~/.bun/bin 加入 path 并持久化
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	bunBinDir := filepath.Join(home, ".bun", "bin")
+	AddDirToPath(bunBinDir)
+	return PersistPathEnv(bunBinDir)
+}
+
+func (b *BunInstaller) IsInstalled() bool {
+	return commandExists("bun")
+}
+
+func (b *BunInstaller) GetVersion() string {
+	cmd := exec.Command("bun", "--version")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
 }
