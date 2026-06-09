@@ -90,6 +90,8 @@ func RecordInstallation(name string, itemType string, version string, paths []st
 	home, _ := os.UserHomeDir()
 	var resolvedPaths []string
 	for _, p := range paths {
+		// 转换为平台特定路径
+		p = filepath.FromSlash(p)
 		if strings.HasPrefix(p, "~") {
 			p = filepath.Join(home, p[1:])
 		}
@@ -114,15 +116,10 @@ func CleanShellConfigs(keywords []string) error {
 		return nil
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-
-	files := []string{
-		filepath.Join(home, ".bashrc"),
-		filepath.Join(home, ".zshrc"),
-		filepath.Join(home, ".profile"),
+	files := getShellConfigFiles()
+	if files == nil {
+		// Windows 平台没有 shell 配置文件
+		return nil
 	}
 
 	for _, file := range files {
@@ -208,7 +205,19 @@ func UninstallComponent(name string) error {
 		if path == "" || path == "/" {
 			continue // 绝对安全保证，禁止删除根目录
 		}
-		if _, err := os.Stat(path); err == nil {
+
+		// 使用 Lstat 检查符号链接
+		info, err := os.Lstat(path)
+		if err != nil {
+			continue // 路径不存在，跳过
+		}
+
+		if info.Mode()&os.ModeSymlink != 0 {
+			// 是符号链接，只删除链接本身
+			ui.Info("  清理符号链接: %s", path)
+			_ = os.Remove(path)
+		} else {
+			// 不是符号链接，删除整个目录/文件
 			ui.Info("  清理路径: %s", path)
 			_ = os.RemoveAll(path)
 		}

@@ -5,7 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+
+	"github.com/fusheng/envkit/internal/ui"
 )
 
 // AddDirToPath 将目录添加到当前进程的 PATH 中
@@ -20,8 +23,12 @@ func AddDirToPath(dir string) {
 	os.Setenv("PATH", dir+string(os.PathListSeparator)+path)
 }
 
-// PersistPathEnv 将环境变量修改写入 shell 配置文件
+// PersistPathEnv 将环境变量修改写入 shell 配置文件（Unix）或系统环境变量（Windows）
 func PersistPathEnv(dir string) error {
+	if runtime.GOOS == "windows" {
+		return persistPathEnvWindows(dir)
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -35,12 +42,8 @@ func PersistPathEnv(dir string) error {
 
 	exportCmd := fmt.Sprintf("\n# added by envkit\nexport PATH=\"%s:$PATH\"\n", pathValue)
 
-	// 常见 shell 配置文件
-	files := []string{
-		filepath.Join(home, ".bashrc"),
-		filepath.Join(home, ".zshrc"),
-		filepath.Join(home, ".profile"),
-	}
+	// 获取 shell 配置文件
+	files := getShellConfigFiles()
 
 	for _, file := range files {
 		if _, err := os.Stat(file); err == nil {
@@ -58,6 +61,85 @@ func PersistPathEnv(dir string) error {
 		}
 	}
 	return nil
+}
+
+// persistPathEnvWindows Windows 平台持久化 PATH
+func persistPathEnvWindows(dir string) error {
+	// 使用 setx 命令修改用户环境变量
+	currentPath := os.Getenv("PATH")
+	if strings.Contains(currentPath, dir) {
+		return nil // 已存在
+	}
+
+	newPath := dir + ";" + currentPath
+	cmd := exec.Command("setx", "PATH", newPath)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("Windows PATH 持久化失败: %w", err)
+	}
+
+	ui.Info("PATH 已更新，请重启终端使其生效")
+	return nil
+}
+
+// getDefaultShell 获取当前用户的默认 shell
+func getDefaultShell() string {
+	shell := os.Getenv("SHELL")
+	if shell != "" {
+		return filepath.Base(shell)
+	}
+
+	// 降级到 dscl 查询（macOS）
+	if runtime.GOOS == "darwin" {
+		cmd := exec.Command("dscl", ".", "-read", os.Getenv("HOME"), "UserShell")
+		out, err := cmd.Output()
+		if err == nil {
+			parts := strings.Fields(string(out))
+			if len(parts) >= 2 {
+				return filepath.Base(parts[1])
+			}
+		}
+	}
+
+	return "bash"
+}
+
+// getShellConfigFiles 获取 shell 配置文件列表
+func getShellConfigFiles() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+
+	defaultShell := getDefaultShell()
+
+	// 优先配置默认 shell 的配置文件
+	var files []string
+
+	if defaultShell == "zsh" {
+		files = []string{
+			filepath.Join(home, ".zshrc"),
+			filepath.Join(home, ".zprofile"),
+		}
+	} else if defaultShell == "bash" {
+		files = []string{
+			filepath.Join(home, ".bashrc"),
+			filepath.Join(home, ".bash_profile"),
+			filepath.Join(home, ".profile"),
+		}
+	} else {
+		// 降级方案：尝试所有
+		files = []string{
+			filepath.Join(home, ".bashrc"),
+			filepath.Join(home, ".zshrc"),
+			filepath.Join(home, ".profile"),
+		}
+	}
+
+	return files
 }
 
 // locateAndAddFnmToPath 定位并添加 fnm 到 PATH
@@ -104,11 +186,7 @@ func persistFnmShellIntegration(fnmDir string) {
 
 	integrationCmd := fmt.Sprintf("\n# fnm integration\nexport PATH=\"%s:$PATH\"\neval \"$(fnm env --use-on-cd)\"\n", pathValue)
 
-	files := []string{
-		filepath.Join(home, ".bashrc"),
-		filepath.Join(home, ".zshrc"),
-		filepath.Join(home, ".profile"),
-	}
+	files := getShellConfigFiles()
 
 	for _, file := range files {
 		if _, err := os.Stat(file); err == nil {

@@ -87,6 +87,22 @@ func (d *DockerInstaller) installOnLinux() error {
 		return fmt.Errorf("当前 Docker 自动安装仅支持 Debian/Ubuntu 系统。其他 Linux 发行版请参考官方文档手动安装: https://docs.docker.com/engine/install/")
 	}
 
+	// 检查依赖
+	if err := CheckAndInstallDependencies([]SystemDependency{
+		CommonDependencies[0], // curl
+		CommonDependencies[5], // gpg
+		{
+			Name:     "lsb-release",
+			Commands: []string{"lsb_release"},
+			PackageName: map[string]string{
+				"apt": "lsb-release",
+			},
+			Required: true,
+		},
+	}); err != nil {
+		return err
+	}
+
 	ui.Info("正在安装 Docker Engine...")
 
 	// 更新包索引
@@ -194,15 +210,24 @@ func (v *VSCodeInstaller) installOnDarwin() error {
 	// 备用方案：直接从 VSCode 官网下载 zip 并安装
 	ui.Warning("通过 Homebrew Cask 安装 VSCode 失败 (%v)，正在尝试直接从官方下载...", err)
 
+	// 检查依赖
+	if err := CheckAndInstallDependencies([]SystemDependency{
+		CommonDependencies[0], // curl
+		CommonDependencies[2], // unzip
+	}); err != nil {
+		return err
+	}
+
 	downloadURL := "https://update.code.visualstudio.com/latest/darwin-universal/stable"
-	zipPath := "/tmp/vscode.zip"
+	zipPath := filepath.Join(os.TempDir(), "vscode.zip")
 
 	if err := runCommand("curl", "-L", "-o", zipPath, downloadURL); err != nil {
 		return fmt.Errorf("下载 VSCode 失败: %w", err)
 	}
 
 	// 解压
-	if err := runCommand("unzip", "-q", zipPath, "-d", "/tmp/vscode-extracted"); err != nil {
+	extractDir := filepath.Join(os.TempDir(), "vscode-extracted")
+	if err := runCommand("unzip", "-q", zipPath, "-d", extractDir); err != nil {
 		os.Remove(zipPath)
 		return fmt.Errorf("解压 VSCode 失败: %w", err)
 	}
@@ -211,9 +236,9 @@ func (v *VSCodeInstaller) installOnDarwin() error {
 	destPath := "/Applications/Visual Studio Code.app"
 	_ = exec.Command("rm", "-rf", destPath).Run()
 
-	if err := runCommand("mv", "/tmp/vscode-extracted/Visual Studio Code.app", destPath); err != nil {
+	if err := runCommand("mv", filepath.Join(extractDir, "Visual Studio Code.app"), destPath); err != nil {
 		// 备用 sudo 移动
-		_ = runCommand("sudo", "mv", "/tmp/vscode-extracted/Visual Studio Code.app", destPath)
+		_ = runCommand("sudo", "mv", filepath.Join(extractDir, "Visual Studio Code.app"), destPath)
 	}
 
 	// 移除 macOS quarantine 属性，防止首次运行时 Gatekeeper 弹窗阻塞终端
@@ -221,7 +246,7 @@ func (v *VSCodeInstaller) installOnDarwin() error {
 
 	// 清理
 	os.Remove(zipPath)
-	_ = exec.Command("rm", "-rf", "/tmp/vscode-extracted").Run()
+	_ = exec.Command("rm", "-rf", extractDir).Run()
 
 	// 自动创建 code 软链接至 ~/.local/bin，以实现终端 code 命令可用
 	home, errHome := os.UserHomeDir()
@@ -244,22 +269,30 @@ func (v *VSCodeInstaller) installOnLinux() error {
 		return fmt.Errorf("当前 VSCode 自动安装仅支持 Debian/Ubuntu 系统。其他 Linux 发行版请前往官网手动下载并安装: https://code.visualstudio.com/")
 	}
 
+	// 检查依赖
+	if err := CheckAndInstallDependencies([]SystemDependency{
+		CommonDependencies[0], // curl
+	}); err != nil {
+		return err
+	}
+
 	// 下载并安装 VSCode .deb 包
 	ui.Info("正在下载 VSCode...")
 
-	if err := runCommand("curl", "-fsSL", "-o", "/tmp/vscode.deb",
+	debPath := filepath.Join(os.TempDir(), "vscode.deb")
+	if err := runCommand("curl", "-fsSL", "-o", debPath,
 		"https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"); err != nil {
 		return fmt.Errorf("下载失败: %w", err)
 	}
 
 	ui.Info("正在安装...")
-	if err := runCommand("sudo", "dpkg", "-i", "/tmp/vscode.deb"); err != nil {
+	if err := runCommand("sudo", "dpkg", "-i", debPath); err != nil {
 		// 修复依赖
 		_ = runCommand("sudo", "apt-get", "install", "-f", "-y")
 	}
 
 	// 清理临时文件
-	os.Remove("/tmp/vscode.deb")
+	os.Remove(debPath)
 
 	return nil
 }
@@ -312,8 +345,18 @@ func installWithApt(packageName string) error {
 
 func installWithWinget(packageId string) error {
 	if !commandExists("winget") {
-		return fmt.Errorf("请先安装 winget")
+		return fmt.Errorf("winget 未安装。请从 Microsoft Store 安装 App Installer")
 	}
+
+	// 检查 winget 版本
+	cmd := exec.Command("winget", "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("无法获取 winget 版本: %w", err)
+	}
+
+	version := strings.TrimSpace(string(out))
+	ui.Info("检测到 winget 版本: %s", version)
 
 	return runCommand("winget", "install", packageId)
 }
@@ -417,7 +460,15 @@ func (m *MinicondaInstaller) installMiniconda(prefix string) error {
 }
 
 func (m *MinicondaInstaller) installUnix(downloadURL, prefix string) error {
-	shPath := "/tmp/miniconda.sh"
+	// 检查依赖
+	if err := CheckAndInstallDependencies([]SystemDependency{
+		CommonDependencies[0], // curl
+		CommonDependencies[4], // bash
+	}); err != nil {
+		return err
+	}
+
+	shPath := filepath.Join(os.TempDir(), "miniconda.sh")
 
 	// 下载安装脚本
 	if err := runCommand("curl", "-fsSL", "-o", shPath, downloadURL); err != nil {
@@ -795,8 +846,13 @@ func runCommand(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
-	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+
+	// Windows 平台使用编码转换适配控制台
+	stdoutWriter := NewWindowsConsoleWriter(os.Stdout)
+	stderrWriter := NewWindowsConsoleWriter(os.Stderr)
+
+	cmd.Stdout = io.MultiWriter(stdoutWriter, &stdoutBuf)
+	cmd.Stderr = io.MultiWriter(stderrWriter, &stderrBuf)
 	cmd.Stdin = os.Stdin // 允许交互式输入（如 sudo 密码）
 
 	err := cmd.Run()

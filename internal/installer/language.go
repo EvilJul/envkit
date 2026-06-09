@@ -60,6 +60,19 @@ func (n *NodeInstaller) installWithBrew(version string) error {
 }
 
 func (n *NodeInstaller) installWithFnm(version string) error {
+	// Windows 平台不支持此安装方式
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("Windows 平台请使用 winget 或从官网下载安装包")
+	}
+
+	// 检查依赖
+	if err := CheckAndInstallDependencies([]SystemDependency{
+		CommonDependencies[0], // curl
+		CommonDependencies[4], // bash
+	}); err != nil {
+		return err
+	}
+
 	// 检查是否安装了 fnm
 	if !commandExists("fnm") {
 		ui.Info("正在安装 fnm (Fast Node Manager)...")
@@ -197,6 +210,19 @@ func (p *PythonInstaller) installWithBrew(version string) error {
 }
 
 func (p *PythonInstaller) installWithUv(version string) error {
+	// Windows 平台不支持此安装方式
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("Windows 平台请使用 winget 或从官网下载安装包")
+	}
+
+	// 检查依赖
+	if err := CheckAndInstallDependencies([]SystemDependency{
+		CommonDependencies[0], // curl
+		CommonDependencies[4], // bash
+	}); err != nil {
+		return err
+	}
+
 	// 检查是否安装了 uv
 	if !commandExists("uv") {
 		ui.Info("正在安装 uv (Python 包管理器)...")
@@ -337,6 +363,14 @@ func (g *GoInstaller) installWithBrew(version string) error {
 func (g *GoInstaller) installFromSourceDarwin(version string) error {
 	ui.Info("正在从官方镜像下载 Go %s...", version)
 
+	// 检查依赖
+	if err := CheckAndInstallDependencies([]SystemDependency{
+		CommonDependencies[0], // curl
+		CommonDependencies[1], // tar
+	}); err != nil {
+		return err
+	}
+
 	arch := runtime.GOARCH
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -394,9 +428,17 @@ func (g *GoInstaller) installFromSourceDarwin(version string) error {
 func (g *GoInstaller) installFromSource(version string) error {
 	ui.Info("从官方镜像下载 Go %s...", version)
 
+	// 检查依赖
+	if err := CheckAndInstallDependencies([]SystemDependency{
+		CommonDependencies[0], // curl
+		CommonDependencies[1], // tar
+	}); err != nil {
+		return err
+	}
+
 	// 下载 Go 安装包
 	arch := runtime.GOARCH
-	tmpFile := "/tmp/go.tar.gz"
+	tmpFile := filepath.Join(os.TempDir(), "go.tar.gz")
 
 	// 尝试多个下载源
 	downloadURLs := []string{
@@ -426,7 +468,7 @@ func (g *GoInstaller) installFromSource(version string) error {
 	userInstallDir := filepath.Join(home, ".local")
 	goDir := filepath.Join(userInstallDir, "go")
 
-	// 先尝试安装到用户目录
+	// 先尝试安装到用户目录（Windows 上忽略权限参数）
 	_ = os.MkdirAll(userInstallDir, 0755)
 	_ = os.RemoveAll(goDir) // 清理旧版本
 
