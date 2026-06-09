@@ -76,25 +76,34 @@ install() {
             URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
         fi
 
-        if curl -fsSL -o "${INSTALL_DIR}/envkit" "$URL"; then
+        # 优先使用 curl 5秒超时直接下载
+        if curl -fsSL --connect-timeout 5 -o "${INSTALL_DIR}/envkit" "$URL"; then
             chmod +x "${INSTALL_DIR}/envkit"
-            echo "✅ EnvKit 已成功从 GitHub Releases 下载并安装到: ${INSTALL_DIR}/envkit"
-        elif command -v go >/dev/null 2>&1; then
-            echo "⚠️  从 GitHub 下载失败，检测到本地已安装 Go，正在尝试从源码编译..."
-            if go build -o "${INSTALL_DIR}/envkit" ./cmd/envkit/main.go; then
+            echo "✅ EnvKit 已从 GitHub Releases 下载并成功安装到: ${INSTALL_DIR}/envkit"
+        else
+            echo "⚠️  直连 GitHub 下载失败或超时，正在尝试使用国内镜像加速代理下载..."
+            PROXY_URL="https://ghp.ci/${URL}"
+            
+            if curl -fsSL -o "${INSTALL_DIR}/envkit" "$PROXY_URL"; then
                 chmod +x "${INSTALL_DIR}/envkit"
-                echo "✅ EnvKit 已从源码成功编译并安装到: ${INSTALL_DIR}/envkit"
+                echo "✅ EnvKit 已通过加速代理成功下载并安装到: ${INSTALL_DIR}/envkit"
+            elif command -v go >/dev/null 2>&1; then
+                echo "⚠️  加速通道也下载失败，检测到本地已安装 Go，正在尝试从源码编译..."
+                if go build -o "${INSTALL_DIR}/envkit" ./cmd/envkit/main.go; then
+                    chmod +x "${INSTALL_DIR}/envkit"
+                    echo "✅ EnvKit 已从源码成功编译并安装到: ${INSTALL_DIR}/envkit"
+                else
+                    echo "❌ 从源码编译 EnvKit 失败"
+                    exit 1
+                fi
             else
-                echo "❌ 从源码编译 EnvKit 失败"
+                echo "❌ 无法安装 EnvKit。"
+                echo "原因: 直连和加速通道下载均失败，且本地未安装 Go 编译器。"
+                echo "请确认："
+                echo "  1. 你的网络能够正常访问 GitHub 或加速代理 https://ghp.ci。"
+                echo "  2. 你已经在 GitHub 上发布了项目的 Release 版本并上传了二进制包 (仓库: $REPO)。"
                 exit 1
             fi
-        else
-            echo "❌ 无法安装 EnvKit。"
-            echo "原因: 从 GitHub 下载失败 (链接: $URL) 且本地未安装 Go 编译器。"
-            echo "请确认："
-            echo "  1. 你的网络能够正常访问 GitHub。"
-            echo "  2. 你已经在 GitHub 上发布了项目的 Release 版本并上传了二进制包 (仓库: $REPO)。"
-            exit 1
         fi
     fi
 
