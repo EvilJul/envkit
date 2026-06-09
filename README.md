@@ -147,6 +147,12 @@ shell:
     - oh-my-zsh
 ```
 
+## 延伸阅读
+
+* [ESP-IDF 全平台环境安装配置与部署教程](docs/esp_idf_setup.md)
+* [EnvKit 详细使用指南](docs/USAGE.md)
+* [EnvKit 架构设计说明书](docs/ARCHITECTURE.md)
+
 ## 本地开发与构建
 
 如果你需要修改代码并重新编译：
