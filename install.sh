@@ -6,6 +6,7 @@ set -e
 REPO="fusheng/envkit"
 VERSION="latest"
 INSTALL_DIR="/usr/local/bin"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 检测操作系统和架构
 detect_platform() {
@@ -71,8 +72,8 @@ install() {
     # curl -L -o "${INSTALL_DIR}/envkit" "$URL"
 
     # 临时方案：从本地复制、从 GitHub 下载或从源码编译
-    if [ -f "dist/${BINARY_NAME}" ]; then
-        cp "dist/${BINARY_NAME}" "${INSTALL_DIR}/envkit"
+    if [ -f "${PROJECT_ROOT}/dist/${BINARY_NAME}" ]; then
+        cp "${PROJECT_ROOT}/dist/${BINARY_NAME}" "${INSTALL_DIR}/envkit"
         chmod +x "${INSTALL_DIR}/envkit"
         echo "✅ EnvKit 已从本地复制并成功安装到: ${INSTALL_DIR}/envkit"
     else
@@ -96,7 +97,7 @@ install() {
                 echo "✅ EnvKit 已通过加速代理成功下载并安装到: ${INSTALL_DIR}/envkit"
             elif command -v go >/dev/null 2>&1; then
                 echo "⚠️  加速通道也下载失败，检测到本地已安装 Go，正在尝试从源码编译..."
-                if go build -o "${INSTALL_DIR}/envkit" ./cmd/envkit/main.go; then
+                if (cd "${PROJECT_ROOT}" && go build -o "${INSTALL_DIR}/envkit" ./cmd/envkit/main.go); then
                     chmod +x "${INSTALL_DIR}/envkit"
                     echo "✅ EnvKit 已从源码成功编译并安装到: ${INSTALL_DIR}/envkit"
                 else
