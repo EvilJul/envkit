@@ -51,6 +51,13 @@ install() {
     if [ "$OS" = "windows" ]; then
         BINARY_NAME="${BINARY_NAME}.exe"
         INSTALL_DIR="$HOME/bin"
+    else
+        # 如果 /usr/local/bin 没有写入权限，则安装到用户目录 ~/.local/bin
+        if [ -w "/usr/local/bin" ]; then
+            INSTALL_DIR="/usr/local/bin"
+        else
+            INSTALL_DIR="$HOME/.local/bin"
+        fi
     fi
 
     # 创建安装目录
