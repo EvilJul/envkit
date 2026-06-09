@@ -83,6 +83,10 @@ func (d *DockerInstaller) Install() error {
 }
 
 func (d *DockerInstaller) installOnLinux() error {
+	if !commandExists("apt-get") {
+		return fmt.Errorf("当前 Docker 自动安装仅支持 Debian/Ubuntu 系统。其他 Linux 发行版请参考官方文档手动安装: https://docs.docker.com/engine/install/")
+	}
+
 	ui.Info("正在安装 Docker Engine...")
 
 	// 更新包索引
@@ -236,6 +240,10 @@ func (v *VSCodeInstaller) installOnDarwin() error {
 }
 
 func (v *VSCodeInstaller) installOnLinux() error {
+	if !commandExists("dpkg") {
+		return fmt.Errorf("当前 VSCode 自动安装仅支持 Debian/Ubuntu 系统。其他 Linux 发行版请前往官网手动下载并安装: https://code.visualstudio.com/")
+	}
+
 	// 下载并安装 VSCode .deb 包
 	ui.Info("正在下载 VSCode...")
 
@@ -281,6 +289,18 @@ func installWithBrew(args ...string) error {
 }
 
 func installWithApt(packageName string) error {
+	if !commandExists("apt-get") {
+		// 自动适配其它常见 Linux 包管理器
+		if commandExists("yum") {
+			return runCommand("sudo", "yum", "install", "-y", packageName)
+		} else if commandExists("dnf") {
+			return runCommand("sudo", "dnf", "install", "-y", packageName)
+		} else if commandExists("pacman") {
+			return runCommand("sudo", "pacman", "-S", "--noconfirm", packageName)
+		}
+		return fmt.Errorf("不支持的 Linux 发行版或缺少包管理器。请手动安装: %s", packageName)
+	}
+
 	// 更新包索引
 	if err := runCommand("sudo", "apt-get", "update"); err != nil {
 		return fmt.Errorf("更新包索引失败: %w", err)
