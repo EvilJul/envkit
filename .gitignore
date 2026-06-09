@@ -53,6 +53,3 @@ coverage.html
 
 # Envkit specific
 envkit/envkit
-
-# Go module cache
-go.sum
