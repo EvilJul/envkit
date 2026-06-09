@@ -31,9 +31,21 @@ Write-Host "📦 正在安装 EnvKit..." -ForegroundColor Cyan
 if (Test-Path $srcPath) {
     Copy-Item -Path $srcPath -Destination $destPath -Force
     Write-Host "✅ EnvKit 已成功安装到: $destPath" -ForegroundColor Green
+} elseif (Get-Command go -ErrorAction SilentlyContinue) {
+    Write-Host "⚠️  未在 dist/ 中找到预编译二进制文件，检测到本地已安装 Go，正在从源码编译..." -ForegroundColor Yellow
+    try {
+        go build -o $destPath ./cmd/envkit/main.go
+        Write-Host "✅ EnvKit 已从源码成功编译并安装到: $destPath" -ForegroundColor Green
+    } catch {
+        Write-Host "❌ 从源码编译 EnvKit 失败: $_" -ForegroundColor Red
+        Exit 1
+    }
 } else {
-    Write-Host "❌ 无法在当前目录的 dist 文件夹中找到: $srcPath" -ForegroundColor Red
-    Write-Host "请确保你在克隆的项目根目录下运行此脚本。" -ForegroundColor Yellow
+    Write-Host "❌ 无法安装 EnvKit。" -ForegroundColor Red
+    Write-Host "原因: 无法在当前目录的 dist 文件夹中找到预编译二进制文件 $srcPath 且本地未安装 Go 编译器。" -ForegroundColor Red
+    Write-Host "解决办法:" -ForegroundColor Yellow
+    Write-Host "  1. 安装 Go 并运行 'go build -o dist/$binaryName ./cmd/envkit' 编译后再运行此脚本。" -ForegroundColor Yellow
+    Write-Host "  2. 或者从 GitHub Releases 下载预编译版本: https://github.com/EvilJul/envkit/releases" -ForegroundColor Yellow
     Exit 1
 }
 
