@@ -1,21 +1,34 @@
 # EnvKit
 
-EnvKit 是一个轻量级、跨平台的本地开发环境一键搭建与配置命令行工具。它可以帮助开发者在全新机器上快速部署语言环境、配置国内镜像加速、运行 Docker 常用数据库，并提供一键式无损卸载与环境变量清理能力，实现开发环境的「开箱即用」与「即用即走」。
+EnvKit 是一个轻量级、跨平台的本地开发环境一键搭建与配置工具，提供**命令行**和**桌面客户端**两种使用方式。它可以帮助开发者在全新机器上快速部署语言环境、配置国内镜像加速、运行 Docker 常用数据库，并提供一键式无损卸载与环境变量清理能力，实现开发环境的「开箱即用」与「即用即走」。
 
 ![EnvKit Concept](docs/envkit_concept.png)
 
 ## 功能特性
 
+### 核心功能
 * **多语言一键部署**：支持 Node.js (基于 fnm)、Python (基于 uv)、Go (官方包)、Rust (基于 rustup)、Java (基于 SDKMAN!) 和 Bun。
 * **国内镜像自动加速**：自动为各环境配置最快的国内源（如 npmmirror、清华源、中科大源、GoProxy 等）。
 * **常用工具集成安装**：支持 Git、Docker、VSCode、Miniconda、kubectl 和 minikube 的静默安装与配置。
 * **开发数据库秒级启动**：基于 Docker 一键启动 PostgreSQL、Redis、MySQL 和 MongoDB 容器，自动持久化数据。
 * **本地环境智能扫描**：快速扫描并以表格形式清晰展示当前系统中各个工具的安装状态与版本。
-* **一键卸载与无痕清理 (New)**：自动记录安装路径与注入的环境变量。支持单个组件卸载或全局一键彻底清理（`uninstall --all`），还原干净的系统。
+* **一键卸载与无痕清理**：自动记录安装路径与注入的环境变量。支持单个组件卸载或全局一键彻底清理（`uninstall --all`），还原干净的系统。
+
+### 桌面客户端 (GUI) 🆕
+* **系统原生界面**：纯白背景、轻量化设计、无 AI 风格
+* **可视化管理**：
+  - **Languages**：管理编程语言环境（Node.js, Python, Go, Rust, Java, Bun）
+  - **Tools**：管理开发工具（Git, Docker, VS Code, Miniconda, Kubectl, Minikube）
+  - **Database**：管理数据库容器（PostgreSQL, Redis, MySQL, MongoDB）
+  - **Environment**：管理系统环境变量（用户变量、系统变量、PATH 管理）
+  - **Settings**：系统信息、镜像源配置、通用设置
+* **一键启动**：使用 `./start-gui.sh` 快速启动桌面版
 
 ## 安装指南
 
-EnvKit 提供了预编译的跨平台二进制文件，开箱即用，无需预装 Go 语言环境。
+EnvKit 提供了预编译的跨平台二进制文件和桌面安装包，开箱即用，无需预装 Go 语言环境。
+
+### 命令行工具 (CLI)
 
 ### macOS / Linux
 

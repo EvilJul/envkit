@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "envkit-gui",
+  "outputfilename": "envkit-gui",
+  "frontend:install": "cd frontend && npm install",
+  "frontend:build": "cd frontend && npm run build",
+  "frontend:dev:watcher": "cd frontend && npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "wailsjsdir": "./frontend",
+  "author": {
+    "name": "EnvKit",
+    "email": "dev@envkit.io"
+  },
+  "info": {
+    "companyName": "EnvKit",
+    "productName": "EnvKit",
+    "productVersion": "0.2.0",
+    "copyright": "Copyright © 2024",
+    "comments": "轻量级跨平台开发环境管理工具"
+  }
+}

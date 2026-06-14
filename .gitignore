@@ -53,3 +53,22 @@ coverage.html
 
 # Envkit specific
 envkit/envkit
+
+# Frontend (Node.js)
+frontend/node_modules/
+frontend/dist/
+frontend/.svelte-kit/
+frontend/package-lock.json
+
+# Wails
+wails.json.bak
+frontend/wailsjs/
+
+# macOS App
+*.app/
+
+# Build artifacts
+build/bin/
+
+# Claude Code
+.claude/
