@@ -17,8 +17,14 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+        platform:
+          - os: macos-latest
+            name: macos
+          - os: ubuntu-22.04
+            name: linux
+          - os: windows-latest
+            name: windows
+    runs-on: ${{ matrix.platform.os }}
 
     steps:
     - uses: actions/checkout@v4
@@ -37,10 +43,10 @@ jobs:
       run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
     - name: Install Linux dependencies
-      if: runner.os == 'Linux'
+      if: matrix.platform.name == 'linux'
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
 
     - name: Install frontend dependencies
       run: cd frontend && npm install
@@ -49,27 +55,27 @@ jobs:
       run: wails build
 
     - name: Package macOS App
-      if: runner.os == 'macOS'
+      if: matrix.platform.name == 'macos'
       run: |
         cd build/bin
         zip -r envkit-gui-macos.zip envkit-gui.app
 
     - name: Upload macOS Artifact
-      if: runner.os == 'macOS'
+      if: matrix.platform.name == 'macos'
       uses: actions/upload-artifact@v4
       with:
         name: envkit-gui-macos
         path: build/bin/envkit-gui-macos.zip
 
     - name: Upload Windows Artifact
-      if: runner.os == 'Windows'
+      if: matrix.platform.name == 'windows'
       uses: actions/upload-artifact@v4
       with:
         name: envkit-gui-windows
         path: build/bin/envkit-gui.exe
 
     - name: Upload Linux Artifact
-      if: runner.os == 'Linux'
+      if: matrix.platform.name == 'linux'
       uses: actions/upload-artifact@v4
       with:
         name: envkit-gui-linux
