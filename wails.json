@@ -2,11 +2,12 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "envkit-gui",
   "outputfilename": "envkit-gui",
-  "frontend:install": "cd frontend && npm install",
-  "frontend:build": "cd frontend && npm run build",
-  "frontend:dev:watcher": "cd frontend && npm run dev",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "wailsjsdir": "./frontend",
+  "frontend:dir": "./frontend",
   "author": {
     "name": "EnvKit",
     "email": "dev@envkit.io"
