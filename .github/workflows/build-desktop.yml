@@ -1,0 +1,76 @@
+name: Build Desktop App
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'main.go'
+      - 'frontend/**'
+      - 'internal/**'
+      - 'wails.json'
+      - '.github/workflows/build-desktop.yml'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Wails
+      run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+    - name: Install Linux dependencies
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+
+    - name: Install frontend dependencies
+      run: cd frontend && npm install
+
+    - name: Build Desktop App
+      run: wails build
+
+    - name: Package macOS App
+      if: runner.os == 'macOS'
+      run: |
+        cd build/bin
+        zip -r envkit-gui-macos.zip envkit-gui.app
+
+    - name: Upload macOS Artifact
+      if: runner.os == 'macOS'
+      uses: actions/upload-artifact@v4
+      with:
+        name: envkit-gui-macos
+        path: build/bin/envkit-gui-macos.zip
+
+    - name: Upload Windows Artifact
+      if: runner.os == 'Windows'
+      uses: actions/upload-artifact@v4
+      with:
+        name: envkit-gui-windows
+        path: build/bin/envkit-gui.exe
+
+    - name: Upload Linux Artifact
+      if: runner.os == 'Linux'
+      uses: actions/upload-artifact@v4
+      with:
+        name: envkit-gui-linux
+        path: build/bin/envkit-gui
