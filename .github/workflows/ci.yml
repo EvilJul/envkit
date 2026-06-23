@@ -27,6 +27,9 @@ jobs:
     - name: Get dependencies
       run: go mod download
 
+    - name: Create dummy frontend/dist for embed
+      run: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
+
     - name: Format check
       run: |
         if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
