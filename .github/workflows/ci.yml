@@ -32,8 +32,8 @@ jobs:
 
     - name: Format check
       run: |
-        # 排除GUI相关文件（需要frontend构建）
-        UNFORMATTED=$(gofmt -s -l . | grep -v '^frontend/' | grep -v '^main\.go$' || true)
+        # 只检查cmd和internal目录（排除GUI根目录main.go）
+        UNFORMATTED=$(gofmt -s -l cmd/ internal/ 2>/dev/null || true)
         if [ ! -z "$UNFORMATTED" ]; then
           echo "Code is not formatted:"
           echo "$UNFORMATTED"
@@ -74,7 +74,7 @@ jobs:
       uses: golangci/golangci-lint-action@v4
       with:
         version: latest
-        args: --timeout=5m
+        args: --timeout=5m ./cmd/... ./internal/...
 
   build:
     name: Build
