@@ -190,8 +190,6 @@ func cleanVersionString(name string, raw string) string {
 	return firstLine
 }
 
-
-
 // DetectTool 检测单个工具
 func DetectTool(name string, versionFlag string) *Tool {
 	path, err := lookPathWithFallback(name)

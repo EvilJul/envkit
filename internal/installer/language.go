@@ -218,7 +218,7 @@ func (p *PythonInstaller) installWithUv(version string) error {
 		if err := runCommand("sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"); err != nil {
 			return fmt.Errorf("安装 uv 失败: %w", err)
 		}
-		
+
 		if err := locateAndAddUvToPath(); err != nil {
 			return err
 		}
