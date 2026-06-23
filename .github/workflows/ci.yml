@@ -32,9 +32,11 @@ jobs:
 
     - name: Format check
       run: |
-        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+        # 排除frontend目录（前端代码）
+        UNFORMATTED=$(gofmt -s -l . | grep -v '^frontend/' || true)
+        if [ ! -z "$UNFORMATTED" ]; then
           echo "Code is not formatted:"
-          gofmt -s -l .
+          echo "$UNFORMATTED"
           exit 1
         fi
       shell: bash
