@@ -97,7 +97,7 @@ func (s *Spinner) Start() {
 // Stop 停止旋转加载器
 func (s *Spinner) Stop() {
 	s.running = false
-	time.Sleep(150 * time.Millisecond) // 等待最后一帧显示
+	time.Sleep(150 * time.Millisecond)               // 等待最后一帧显示
 	fmt.Print("\r" + strings.Repeat(" ", 50) + "\r") // 清除行
 }
 

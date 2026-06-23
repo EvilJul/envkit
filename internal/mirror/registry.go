@@ -42,9 +42,9 @@ func (r *Registry) initMirrors() {
 
 	// Rust 镜像源
 	r.mirrors["rust"] = map[string]string{
-		"ustc":     "https://mirrors.ustc.edu.cn/crates.io-index",
-		"sjtu":     "https://mirrors.sjtug.sjtu.edu.cn/git/crates.io-index",
-		"tsinghua": "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git",
+		"ustc":      "https://mirrors.ustc.edu.cn/crates.io-index",
+		"sjtu":      "https://mirrors.sjtug.sjtu.edu.cn/git/crates.io-index",
+		"tsinghua":  "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git",
 		"bytedance": "https://rsproxy.cn",
 	}
 
@@ -57,16 +57,16 @@ func (r *Registry) initMirrors() {
 
 	// Maven 镜像源
 	r.mirrors["maven"] = map[string]string{
-		"aliyun":   "https://maven.aliyun.com/repository/public",
-		"tencent":  "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/",
-		"huawei":   "https://repo.huaweicloud.com/repository/maven/",
-		"netease":  "https://mirrors.163.com/maven/repository/maven-public/",
+		"aliyun":  "https://maven.aliyun.com/repository/public",
+		"tencent": "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/",
+		"huawei":  "https://repo.huaweicloud.com/repository/maven/",
+		"netease": "https://mirrors.163.com/maven/repository/maven-public/",
 	}
 
 	// Composer (PHP) 镜像源
 	r.mirrors["composer"] = map[string]string{
-		"aliyun":   "https://mirrors.aliyun.com/composer/",
-		"tencent":  "https://mirrors.cloud.tencent.com/composer/",
+		"aliyun":      "https://mirrors.aliyun.com/composer/",
+		"tencent":     "https://mirrors.cloud.tencent.com/composer/",
 		"phpcomposer": "https://packagist.phpcomposer.com",
 	}
 

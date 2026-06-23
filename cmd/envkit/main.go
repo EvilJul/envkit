@@ -71,7 +71,7 @@ func handleInit() {
 
 	fmt.Print("请输入选项 (1-3): ")
 	var choice int
-	fmt.Scanln(&choice)
+	_, _ = fmt.Scanln(&choice)
 
 	if choice < 1 || choice > len(list) {
 		ui.Error("无效的选项")
@@ -322,7 +322,7 @@ func handleInteractiveInstall() {
 
 	fmt.Print("是否开始安装? (y/N): ")
 	var confirm string
-	fmt.Scanln(&confirm)
+	_, _ = fmt.Scanln(&confirm)
 	if confirm != "y" && confirm != "Y" {
 		ui.Info("安装已取消。")
 		return
@@ -785,7 +785,7 @@ func handleDocker() {
 		// 询问是否删除数据卷
 		fmt.Print("是否同时删除数据卷? (y/N): ")
 		var answer string
-		fmt.Scanln(&answer)
+		_, _ = fmt.Scanln(&answer)
 		removeVolume := answer == "y" || answer == "Y"
 
 		if err := dockerMgr.RemoveContainer(containerName, removeVolume); err != nil {
@@ -818,7 +818,7 @@ func handleUninstall() {
 			// 询问确认
 			fmt.Print(ui.Red("警告: 您将卸载通过 EnvKit 安装的所有组件及配置。确定继续吗? (y/N): "))
 			var confirm string
-			fmt.Scanln(&confirm)
+			_, _ = fmt.Scanln(&confirm)
 			if confirm != "y" && confirm != "Y" {
 				ui.Info("操作已取消。")
 				return
@@ -863,7 +863,7 @@ func handleUninstall() {
 		if item.Type == "language" {
 			typeStr = "语言"
 		}
-		fmt.Printf("  %d) %-10s (%s) [版本: %s, 安装时间: %s]\n", 
+		fmt.Printf("  %d) %-10s (%s) [版本: %s, 安装时间: %s]\n",
 			i+1, name, typeStr, item.Version, item.InstalledAt.Format("2006-01-02 15:04:05"))
 	}
 	fmt.Printf("  %d) 卸载所有组件 (--all)\n", len(names)+1)
@@ -901,7 +901,7 @@ func handleUninstall() {
 	if uninstallAll {
 		fmt.Print(ui.Red("警告: 您将卸载通过 EnvKit 安装的所有组件及配置。确定继续吗? (y/N): "))
 		var confirm string
-		fmt.Scanln(&confirm)
+		_, _ = fmt.Scanln(&confirm)
 		if confirm != "y" && confirm != "Y" {
 			ui.Info("操作已取消。")
 			return
@@ -928,7 +928,7 @@ func handleUninstall() {
 
 	fmt.Print("是否开始卸载? (y/N): ")
 	var confirm string
-	fmt.Scanln(&confirm)
+	_, _ = fmt.Scanln(&confirm)
 	if confirm != "y" && confirm != "Y" {
 		ui.Info("卸载已取消。")
 		return

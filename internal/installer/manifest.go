@@ -16,8 +16,8 @@ type ManifestItem struct {
 	Name        string    `json:"name"`
 	Type        string    `json:"type"` // "language" or "tool"
 	Version     string    `json:"version"`
-	Paths       []string  `json:"paths"`         // 创建的文件夹/文件路径
-	ShellLines  []string  `json:"shell_lines"`   // 写入 shell 配置文件中的关键字特征
+	Paths       []string  `json:"paths"`       // 创建的文件夹/文件路径
+	ShellLines  []string  `json:"shell_lines"` // 写入 shell 配置文件中的关键字特征
 	InstalledAt time.Time `json:"installed_at"`
 }
 

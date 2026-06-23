@@ -15,8 +15,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
 	"github.com/fusheng/envkit/internal/detector"
-	"github.com/fusheng/envkit/internal/installer"
 	"github.com/fusheng/envkit/internal/docker"
+	"github.com/fusheng/envkit/internal/installer"
 )
 
 //go:embed all:frontend/dist

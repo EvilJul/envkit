@@ -96,7 +96,7 @@ func (g *GoConfigurator) SetToProfile() error {
 			f, err := os.OpenFile(bashrc, os.O_APPEND|os.O_WRONLY, 0644)
 			if err == nil {
 				defer f.Close()
-				f.WriteString(exportLine)
+				_, _ = f.WriteString(exportLine)
 			}
 		}
 
@@ -105,7 +105,7 @@ func (g *GoConfigurator) SetToProfile() error {
 			f, err := os.OpenFile(zshrc, os.O_APPEND|os.O_WRONLY, 0644)
 			if err == nil {
 				defer f.Close()
-				f.WriteString(exportLine)
+				_, _ = f.WriteString(exportLine)
 			}
 		}
 
