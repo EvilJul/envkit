@@ -31,8 +31,9 @@ jobs:
       run: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
 
     - name: Format check
+      if: runner.os != 'Windows'
       run: |
-        # 直接检查cmd和internal目录，不依赖复杂的grep/过滤
+        # 只在Linux和macOS上检查格式（Windows bash行为不一致）
         cd cmd && gofmt -s -l . > /tmp/fmt_cmd.txt || true
         cd ../internal && gofmt -s -l . > /tmp/fmt_internal.txt || true
         cd ..
