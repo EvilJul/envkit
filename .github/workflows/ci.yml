@@ -32,11 +32,14 @@ jobs:
 
     - name: Format check
       run: |
-        # 只检查cmd和internal目录（排除GUI根目录main.go）
-        UNFORMATTED=$(gofmt -s -l cmd/ internal/ 2>/dev/null || true)
-        if [ ! -z "$UNFORMATTED" ]; then
+        # 直接检查cmd和internal目录，不依赖复杂的grep/过滤
+        cd cmd && gofmt -s -l . > /tmp/fmt_cmd.txt || true
+        cd ../internal && gofmt -s -l . > /tmp/fmt_internal.txt || true
+        cd ..
+
+        if [ -s /tmp/fmt_cmd.txt ] || [ -s /tmp/fmt_internal.txt ]; then
           echo "Code is not formatted:"
-          echo "$UNFORMATTED"
+          cat /tmp/fmt_cmd.txt /tmp/fmt_internal.txt
           exit 1
         fi
       shell: bash
