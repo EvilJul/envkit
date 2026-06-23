@@ -35,13 +35,17 @@ func (n *NPMConfigurator) Configure(mirror string) error {
 	// 设置pnpm镜像源
 	if exec.Command("pnpm", "--version").Run() == nil {
 		cmd = exec.Command("pnpm", "config", "set", "registry", url)
-		_ = cmd.Run() // 忽略pnpm错误
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("⚠️  设置 pnpm 镜像源失败: %v\n", err)
+		}
 	}
 
 	// 设置yarn镜像源
 	if exec.Command("yarn", "--version").Run() == nil {
 		cmd = exec.Command("yarn", "config", "set", "registry", url)
-		_ = cmd.Run() // 忽略yarn错误
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("⚠️  设置 yarn 镜像源失败: %v\n", err)
+		}
 	}
 
 	fmt.Printf("✓ 已配置npm镜像源: %s\n", url)

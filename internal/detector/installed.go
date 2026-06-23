@@ -36,17 +36,39 @@ func lookPathWithFallback(name string) (string, error) {
 		filepath.Join(home, "miniconda3", "condabin"),
 		filepath.Join(home, ".fnm"),
 		filepath.Join(home, ".local", "share", "fnm"),
-		filepath.Join(home, "Library", "Application Support", "fnm"),
-		"/usr/local/go/bin",
+	}
+
+	// macOS 特有路径
+	if runtime.GOOS == "darwin" {
+		fallbacks = append(fallbacks, filepath.Join(home, "Library", "Application Support", "fnm"))
+	}
+
+	// Unix 标准路径
+	if runtime.GOOS != "windows" {
+		fallbacks = append(fallbacks, "/usr/local/go/bin")
+	}
+
+	// Windows 特有路径
+	if runtime.GOOS == "windows" {
+		fallbacks = append(fallbacks,
+			filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "Python"),
+			filepath.Join(os.Getenv("APPDATA"), "npm"),
+			filepath.Join(os.Getenv("PROGRAMFILES"), "Go", "bin"),
+		)
+	}
+
+	// Windows 上额外尝试 .cmd/.bat 后缀
+	winExts := []string{""}
+	if runtime.GOOS == "windows" {
+		winExts = []string{".exe", ".cmd", ".bat"}
 	}
 
 	for _, dir := range fallbacks {
-		binPath := filepath.Join(dir, name)
-		if runtime.GOOS == "windows" {
-			binPath += ".exe"
-		}
-		if _, err := os.Stat(binPath); err == nil {
-			return binPath, nil
+		for _, ext := range winExts {
+			binPath := filepath.Join(dir, name+ext)
+			if _, err := os.Stat(binPath); err == nil {
+				return binPath, nil
+			}
 		}
 	}
 

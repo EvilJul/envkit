@@ -1,6 +1,7 @@
 package detector
 
 import (
+	"bufio"
 	"os"
 	"os/exec"
 	"strings"
@@ -8,27 +9,12 @@ import (
 
 // detectLinuxDistribution 检测Linux发行版
 func detectLinuxDistribution() string {
-	// 尝试读取 /etc/os-release
+	// 尝试读取 /etc/os-release，优先解析 ID= 字段
 	data, err := os.ReadFile("/etc/os-release")
 	if err == nil {
-		content := string(data)
-		if strings.Contains(content, "ubuntu") || strings.Contains(content, "Ubuntu") {
-			return "ubuntu"
-		}
-		if strings.Contains(content, "debian") || strings.Contains(content, "Debian") {
-			return "debian"
-		}
-		if strings.Contains(content, "fedora") || strings.Contains(content, "Fedora") {
-			return "fedora"
-		}
-		if strings.Contains(content, "centos") || strings.Contains(content, "CentOS") {
-			return "centos"
-		}
-		if strings.Contains(content, "arch") || strings.Contains(content, "Arch") {
-			return "arch"
-		}
-		if strings.Contains(content, "opensuse") || strings.Contains(content, "openSUSE") {
-			return "opensuse"
+		id := parseOSReleaseID(string(data))
+		if id != "" {
+			return id
 		}
 	}
 
@@ -43,4 +29,26 @@ func detectLinuxDistribution() string {
 	}
 
 	return "unknown"
+}
+
+// parseOSReleaseID 从 /etc/os-release 内容中解析 ID 字段
+// 优先匹配 ID= 行，避免 ID_LIKE= 等字段导致误判
+func parseOSReleaseID(content string) string {
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "ID=") {
+			id := strings.Trim(strings.TrimPrefix(line, "ID"), `"'`)
+			return strings.ToLower(id)
+		}
+	}
+	// fallback: 用 Contains 做模糊匹配
+	lower := strings.ToLower(content)
+	knownDistros := []string{"ubuntu", "debian", "fedora", "centos", "arch", "opensuse", "alpine", "linuxmint", "pop"}
+	for _, distro := range knownDistros {
+		if strings.Contains(lower, distro) {
+			return distro
+		}
+	}
+	return ""
 }

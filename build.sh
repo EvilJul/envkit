@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 APP_NAME="envkit"
 
 echo "🔨 Building EnvKit v${VERSION}..."

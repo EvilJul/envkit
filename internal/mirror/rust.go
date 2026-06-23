@@ -84,11 +84,11 @@ func (r *RustConfigurator) getConfigPath() (string, error) {
 
 	switch runtime.GOOS {
 	case "windows":
-		userProfile := os.Getenv("USERPROFILE")
-		if userProfile == "" {
-			return "", fmt.Errorf("无法获取USERPROFILE环境变量")
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("无法获取用户目录: %w", err)
 		}
-		configPath = filepath.Join(userProfile, ".cargo", "config")
+		configPath = filepath.Join(home, ".cargo", "config")
 	case "darwin", "linux":
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -132,7 +132,14 @@ func (r *RustConfigurator) ConfigureRustup() error {
 
 		profilePath = bashrc
 	case "windows":
-		// Windows使用系统环境变量
+		// Windows 上通过注册表持久化环境变量
+		if err := setWindowsEnvVar("RUSTUP_DIST_SERVER", "https://mirrors.ustc.edu.cn/rust-static"); err != nil {
+			return fmt.Errorf("设置 RUSTUP_DIST_SERVER 失败: %w", err)
+		}
+		if err := setWindowsEnvVar("RUSTUP_UPDATE_ROOT", "https://mirrors.ustc.edu.cn/rust-static/rustup"); err != nil {
+			return fmt.Errorf("设置 RUSTUP_UPDATE_ROOT 失败: %w", err)
+		}
+		// 同时设置当前进程环境变量
 		os.Setenv("RUSTUP_DIST_SERVER", "https://mirrors.ustc.edu.cn/rust-static")
 		os.Setenv("RUSTUP_UPDATE_ROOT", "https://mirrors.ustc.edu.cn/rust-static/rustup")
 		return nil
@@ -150,9 +157,13 @@ func (r *RustConfigurator) appendToFile(path string, lines []string) error {
 	}
 	defer f.Close()
 
-	_, _ = f.WriteString("\n# Rust镜像源配置\n")
+	if _, err := f.WriteString("\n# Rust镜像源配置\n"); err != nil {
+		return err
+	}
 	for _, line := range lines {
-		_, _ = f.WriteString(line + "\n")
+		if _, err := f.WriteString(line + "\n"); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -242,7 +242,14 @@ func (p *PythonInstaller) installWithWinget(version string) error {
 		return fmt.Errorf("请先安装 winget")
 	}
 
-	return runCommand("winget", "install", "Python.Python."+version)
+	// winget 中 Python 包 ID 格式为 Python.Python.3.12（不含 patch 版本）
+	parts := strings.Split(version, ".")
+	wingetVersion := version
+	if len(parts) >= 2 {
+		wingetVersion = parts[0] + "." + parts[1]
+	}
+
+	return runCommand("winget", "install", "Python.Python."+wingetVersion)
 }
 
 func (p *PythonInstaller) IsInstalled() bool {
@@ -284,7 +291,7 @@ func (g *GoInstaller) Install(version string) error {
 	}
 
 	if err == nil || g.IsInstalled() {
-		if err != nil {
+		if err == nil {
 			RecordInstallation("go", "language", version, nil, []string{"# added by envkit"})
 		}
 		return nil
@@ -413,7 +420,6 @@ func (r *RustInstaller) Install(version string) error {
 	defer spinner.Stop()
 
 	// Rust 通常通过 rustup 安装
-	var err error
 	if !commandExists("rustup") {
 		ui.Info("正在安装 rustup...")
 		var cmd *exec.Cmd
@@ -427,15 +433,12 @@ func (r *RustInstaller) Install(version string) error {
 			"RUSTUP_DIST_SERVER=https://rsproxy.cn",
 			"RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
 		)
-		err = cmd.Run()
-		if err != nil {
+		if err := cmd.Run(); err != nil {
 			if !r.IsInstalled() {
 				return fmt.Errorf("安装 rustup 失败: %w", err)
 			}
-		}
-
-		if err == nil {
-			if err = locateAndAddRustupToPath(); err != nil {
+		} else {
+			if err := locateAndAddRustupToPath(); err != nil {
 				if !r.IsInstalled() {
 					return err
 				}
@@ -453,15 +456,17 @@ func (r *RustInstaller) Install(version string) error {
 			"RUSTUP_DIST_SERVER=https://rsproxy.cn",
 			"RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
 		)
-		err = cmd.Run()
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("安装 Rust %s 失败: %w", version, err)
+		}
 	}
 
-	if err == nil || r.IsInstalled() {
+	if r.IsInstalled() {
 		paths := []string{"~/.cargo", "~/.rustup"}
 		RecordInstallation("rust", "language", version, paths, []string{"# added by envkit"})
 		return nil
 	}
-	return err
+	return fmt.Errorf("Rust 安装失败")
 }
 
 func (r *RustInstaller) IsInstalled() bool {

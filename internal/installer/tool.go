@@ -358,7 +358,7 @@ func installWithWinget(packageId string) error {
 	version := strings.TrimSpace(string(out))
 	ui.Info("检测到 winget 版本: %s", version)
 
-	return runCommand("winget", "install", packageId)
+	return runCommand("winget", "install", packageId, "--silent", "--accept-package-agreements", "--accept-source-agreements")
 }
 
 // GetToolInstaller 获取工具安装器

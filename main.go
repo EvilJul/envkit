@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/wailsapp/wails/v2"
@@ -322,28 +323,41 @@ func (a *App) CreateEnvFromTemplate(projectPath string, fileName string, templat
 }
 
 func (a *App) GetEnvVariables() map[string]interface{} {
-	homeDir, _ := os.UserHomeDir()
-
-	// 检测当前 shell
 	shell := detectShell()
 
-	// 获取配置文件路径
-	var configFile string
-	if shell == "zsh" {
-		configFile = filepath.Join(homeDir, ".zshrc")
+	var userVars []map[string]string
+	var systemVars []map[string]string
+	var pathEntries []string
+
+	if isWindows() {
+		// Windows: 从注册表读取用户环境变量
+		userVars = getWindowsUserEnvVars()
+		pathEntries = getWindowsUserPath()
+		// Windows 系统环境变量（简化：只读取当前进程的）
+		for _, env := range os.Environ() {
+			parts := strings.SplitN(env, "=", 2)
+			if len(parts) == 2 && !strings.EqualFold(parts[0], "Path") {
+				systemVars = append(systemVars, map[string]string{
+					"key":    parts[0],
+					"value":  parts[1],
+					"source": "系统环境",
+					"scope":  "system",
+				})
+			}
+		}
 	} else {
-		configFile = filepath.Join(homeDir, ".bash_profile")
+		// Unix: 从 shell 配置文件解析
+		homeDir, _ := os.UserHomeDir()
+		var configFile string
+		if shell == "zsh" {
+			configFile = filepath.Join(homeDir, ".zshrc")
+		} else {
+			configFile = filepath.Join(homeDir, ".bash_profile")
+		}
+		userVars = parseEnvFile(configFile)
+		systemVars = parseEnvFile("/etc/profile")
+		pathEntries = filepath.SplitList(os.Getenv("PATH"))
 	}
-
-	// 解析用户配置文件
-	userVars := parseEnvFile(configFile)
-
-	// 解析系统配置文件
-	systemVars := parseEnvFile("/etc/profile")
-
-	// 获取 PATH 变量
-	pathValue := os.Getenv("PATH")
-	pathEntries := strings.Split(pathValue, ":")
 
 	return map[string]interface{}{
 		"user":   userVars,
@@ -353,7 +367,20 @@ func (a *App) GetEnvVariables() map[string]interface{} {
 	}
 }
 
+// isWindows 检查当前是否为 Windows 平台
+func isWindows() bool {
+	return runtime.GOOS == "windows"
+}
+
 func detectShell() string {
+	if isWindows() {
+		// Windows 上检测 PowerShell 或 cmd
+		shell := os.Getenv("SHELL")
+		if shell != "" {
+			return filepath.Base(shell)
+		}
+		return "powershell"
+	}
 	shell := os.Getenv("SHELL")
 	if strings.Contains(shell, "zsh") {
 		return "zsh"
@@ -404,6 +431,17 @@ func parseEnvFile(filePath string) []map[string]string {
 }
 
 func getScopeFromPath(filePath string) string {
+	if isWindows() {
+		// Windows 系统目录判断
+		winDir := os.Getenv("SystemRoot")
+		if winDir == "" {
+			winDir = `C:\Windows`
+		}
+		if strings.HasPrefix(strings.ToLower(filePath), strings.ToLower(winDir)) {
+			return "system"
+		}
+		return "user"
+	}
 	if strings.HasPrefix(filePath, "/etc") {
 		return "system"
 	}
@@ -411,6 +449,11 @@ func getScopeFromPath(filePath string) string {
 }
 
 func (a *App) SetEnvVariable(key string, value string, scope string) error {
+	if isWindows() {
+		// Windows: 通过注册表设置用户环境变量
+		return setWindowsEnvVar(key, value)
+	}
+
 	homeDir, _ := os.UserHomeDir()
 	shell := detectShell()
 
@@ -454,6 +497,11 @@ func (a *App) SetEnvVariable(key string, value string, scope string) error {
 }
 
 func (a *App) DeleteEnvVariable(key string, scope string) error {
+	if isWindows() {
+		// Windows: 通过注册表删除用户环境变量
+		return deleteWindowsEnvVar(key)
+	}
+
 	homeDir, _ := os.UserHomeDir()
 	shell := detectShell()
 

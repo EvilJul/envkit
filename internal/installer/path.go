@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"github.com/fusheng/envkit/internal/ui"
 )
 
 // AddDirToPath 将目录添加到当前进程的 PATH 中
@@ -63,24 +61,6 @@ func PersistPathEnv(dir string) error {
 	return nil
 }
 
-// persistPathEnvWindows Windows 平台持久化 PATH
-func persistPathEnvWindows(dir string) error {
-	// 使用 setx 命令修改用户环境变量
-	currentPath := os.Getenv("PATH")
-	if strings.Contains(currentPath, dir) {
-		return nil // 已存在
-	}
-
-	newPath := dir + ";" + currentPath
-	cmd := exec.Command("setx", "PATH", newPath)
-	configureWindowsCommand(cmd)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("Windows PATH 持久化失败: %w", err)
-	}
-
-	ui.Info("PATH 已更新，请重启终端使其生效")
-	return nil
-}
 
 // getDefaultShell 获取当前用户的默认 shell
 func getDefaultShell() string {
@@ -253,7 +233,11 @@ func locateAndAddUvToPath() error {
 	}
 
 	for _, dir := range dirs {
-		uvPath := filepath.Join(dir, "uv")
+		uvName := "uv"
+		if runtime.GOOS == "windows" {
+			uvName = "uv.exe"
+		}
+		uvPath := filepath.Join(dir, uvName)
 		if _, err := os.Stat(uvPath); err == nil {
 			AddDirToPath(dir)
 			_ = PersistPathEnv(dir)

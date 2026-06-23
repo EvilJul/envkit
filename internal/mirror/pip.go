@@ -101,7 +101,14 @@ func (p *PipConfigurator) extractHost(url string) string {
 
 // Verify 验证配置
 func (p *PipConfigurator) Verify() error {
-	cmd := exec.Command("pip", "config", "get", "global.index-url")
+	// 优先使用 pip3，降级到 pip
+	pipCmd := "pip"
+	if _, err := exec.LookPath("pip"); err != nil {
+		if _, err := exec.LookPath("pip3"); err == nil {
+			pipCmd = "pip3"
+		}
+	}
+	cmd := exec.Command(pipCmd, "config", "get", "global.index-url")
 	output, err := cmd.Output()
 	if err != nil {
 		return err

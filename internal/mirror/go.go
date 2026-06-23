@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // GoConfigurator Go镜像源配置器
@@ -85,27 +87,23 @@ func (g *GoConfigurator) SetToProfile() error {
 	switch runtime.GOOS {
 	case "darwin", "linux":
 		// 尝试写入.bashrc和.zshrc
-		bashrc := home + "/.bashrc"
-		zshrc := home + "/.zshrc"
+		bashrc := filepath.Join(home, ".bashrc")
+		zshrc := filepath.Join(home, ".zshrc")
 
 		goproxy, _ := exec.Command("go", "env", "GOPROXY").Output()
-		exportLine := fmt.Sprintf("\nexport GOPROXY=%s", string(goproxy))
+		exportLine := fmt.Sprintf("\nexport GOPROXY=%s", strings.TrimSpace(string(goproxy)))
 
 		// 写入.bashrc
 		if _, err := os.Stat(bashrc); err == nil {
-			f, err := os.OpenFile(bashrc, os.O_APPEND|os.O_WRONLY, 0644)
-			if err == nil {
-				defer f.Close()
-				_, _ = f.WriteString(exportLine)
+			if err := appendToFile(bashrc, exportLine); err != nil {
+				fmt.Printf("⚠️  写入 %s 失败: %v\n", bashrc, err)
 			}
 		}
 
 		// 写入.zshrc
 		if _, err := os.Stat(zshrc); err == nil {
-			f, err := os.OpenFile(zshrc, os.O_APPEND|os.O_WRONLY, 0644)
-			if err == nil {
-				defer f.Close()
-				_, _ = f.WriteString(exportLine)
+			if err := appendToFile(zshrc, exportLine); err != nil {
+				fmt.Printf("⚠️  写入 %s 失败: %v\n", zshrc, err)
 			}
 		}
 
@@ -128,4 +126,15 @@ func (g *GoConfigurator) Verify() error {
 	}
 	fmt.Printf("当前GOPROXY: %s", string(output))
 	return nil
+}
+
+// appendToFile 追加内容到文件
+func appendToFile(path string, content string) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(content)
+	return err
 }

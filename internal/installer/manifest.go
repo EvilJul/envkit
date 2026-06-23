@@ -178,9 +178,14 @@ func CleanShellConfigs(keywords []string) error {
 			newLines = append(newLines, line)
 		}
 
-		// 写回文件并去除多余的空行
+		// 写回文件，保留原始文件权限
 		newContent := strings.Join(newLines, "\n")
-		_ = os.WriteFile(file, []byte(newContent), 0644)
+		info, _ := os.Stat(file)
+		perm := os.FileMode(0644)
+		if info != nil {
+			perm = info.Mode()
+		}
+		_ = os.WriteFile(file, []byte(newContent), perm)
 	}
 
 	return nil
