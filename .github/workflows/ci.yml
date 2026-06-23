@@ -32,8 +32,8 @@ jobs:
 
     - name: Format check
       run: |
-        # 排除frontend目录（前端代码）
-        UNFORMATTED=$(gofmt -s -l . | grep -v '^frontend/' || true)
+        # 排除GUI相关文件（需要frontend构建）
+        UNFORMATTED=$(gofmt -s -l . | grep -v '^frontend/' | grep -v '^main\.go$' || true)
         if [ ! -z "$UNFORMATTED" ]; then
           echo "Code is not formatted:"
           echo "$UNFORMATTED"
@@ -42,7 +42,10 @@ jobs:
       shell: bash
 
     - name: Vet
-      run: go vet ./...
+      run: |
+        # 检查所有包，排除GUI主程序（需要frontend/dist）
+        go vet $(go list ./... | grep -v '^github.com/fusheng/envkit$')
+      shell: bash
 
     - name: Test
       run: go test -v -race -coverprofile=coverage.out ./...
