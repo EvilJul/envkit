@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"golang.org/x/sys/windows/registry"
 	"github.com/fusheng/envkit/internal/ui"
+	"golang.org/x/sys/windows/registry"
 )
 
 // persistPathEnvWindows 通过 Windows 注册表持久化用户 PATH 环境变量

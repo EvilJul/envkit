@@ -61,7 +61,6 @@ func PersistPathEnv(dir string) error {
 	return nil
 }
 
-
 // getDefaultShell 获取当前用户的默认 shell
 func getDefaultShell() string {
 	shell := os.Getenv("SHELL")
