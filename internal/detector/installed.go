@@ -217,7 +217,7 @@ func DetectLanguages() map[string]*Tool {
 	languages := map[string]*Tool{
 		"node":   DetectTool("node", "--version"),
 		"npm":    DetectTool("npm", "--version"),
-		"python": DetectTool("python3", "--version"),
+		"python": detectPython(),
 		"pip":    DetectTool("pip3", "--version"),
 		"go":     DetectTool("go", "version"),
 		"rustc":  DetectTool("rustc", "--version"),
@@ -269,4 +269,26 @@ func DetectPackageManagers() map[string]*Tool {
 	managers["scoop"] = DetectTool("scoop", "--version")
 
 	return managers
+}
+
+// detectPython 检测 Python，跨平台兼容 python3/python 命令
+func detectPython() *Tool {
+	// 优先检测 python3（Linux/macOS标准）
+	tool := DetectTool("python3", "--version")
+	if tool.Installed && tool.Version != "" {
+		tool.Name = "python"
+		return tool
+	}
+
+	// 降级检测 python（Windows标准）
+	tool = DetectTool("python", "--version")
+	tool.Name = "python"
+
+	// 版本验证降级：路径存在但版本为空则标记未安装
+	// 类似Java的处理逻辑（207-209行）
+	if tool.Installed && tool.Version == "" {
+		tool.Installed = false
+	}
+
+	return tool
 }

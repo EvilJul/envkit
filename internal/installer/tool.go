@@ -844,6 +844,7 @@ func fileExists(path string) bool {
 // runCommand 执行外部命令并实时输出，若出错则在 Error 中附加详细的错误内容（包括 stdout/stderr 末尾）
 func runCommand(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
+	configureWindowsCommand(cmd)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 

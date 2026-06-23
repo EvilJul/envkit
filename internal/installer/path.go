@@ -73,6 +73,7 @@ func persistPathEnvWindows(dir string) error {
 
 	newPath := dir + ";" + currentPath
 	cmd := exec.Command("setx", "PATH", newPath)
+	configureWindowsCommand(cmd)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("Windows PATH 持久化失败: %w", err)
 	}
@@ -326,3 +327,26 @@ func locateAndAddBrewGoToPath(version string) {
 		}
 	}
 }
+
+// persistFnmMirrorConfig 将fnm国内镜像配置持久化到shell配置文件
+func persistFnmMirrorConfig() {
+	mirrorConfig := "\n# fnm 国内镜像配置 (added by envkit)\nexport FNM_NODE_DIST_MIRROR=\"https://registry.npmmirror.com/-/binary/node\"\n"
+
+	files := getShellConfigFiles()
+	for _, file := range files {
+		if _, err := os.Stat(file); err == nil {
+			content, err := os.ReadFile(file)
+			if err == nil {
+				// 避免重复写入
+				if !strings.Contains(string(content), "FNM_NODE_DIST_MIRROR") {
+					f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0644)
+					if err == nil {
+						_, _ = f.WriteString(mirrorConfig)
+						_ = f.Close()
+					}
+				}
+			}
+		}
+	}
+}
+

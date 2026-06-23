@@ -60,32 +60,92 @@ func (n *NodeInstaller) installWithBrew(version string) error {
 }
 
 func (n *NodeInstaller) installWithFnm(version string) error {
-	// 检查是否安装了 fnm
+	// 1. 检查系统依赖
+	if err := CheckAndInstallDependencies([]SystemDependency{
+		CommonDependencies[0], // curl
+		CommonDependencies[4], // bash
+	}); err != nil {
+		return err
+	}
+
+	// 2. 安装fnm（如果未安装）
 	if !commandExists("fnm") {
 		ui.Info("正在安装 fnm (Fast Node Manager)...")
-		if err := runCommand("sh", "-c", "curl -fsSL https://fnm.vercel.app/install | bash"); err != nil {
-			return fmt.Errorf("安装 fnm 失败: %w", err)
+
+		// 多源降级策略
+		installSources := []struct {
+			name string
+			cmd  string
+		}{
+			{"国内镜像(npmmirror)", "curl -fsSL https://registry.npmmirror.com/-/binary/fnm/install | bash"},
+			{"GitHub官方", "curl -fsSL https://raw.githubusercontent.com/Schniz/fnm/master/.ci/install.sh | bash"},
+			{"fnm官网", "curl -fsSL https://fnm.vercel.app/install | bash"},
 		}
-		
-		if err := locateAndAddFnmToPath(); err != nil {
-			return err
+
+		var lastErr error
+		installed := false
+		for _, source := range installSources {
+			ui.Info("尝试从 %s 安装...", source.name)
+			cmd := exec.Command("sh", "-c", source.cmd)
+			configureWindowsCommand(cmd)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+
+			if err := cmd.Run(); err != nil {
+				lastErr = err
+				ui.Warning("%s 安装失败: %v", source.name, err)
+				continue
+			}
+
+			// 验证安装成功
+			if err := locateAndAddFnmToPath(); err != nil {
+				lastErr = err
+				ui.Warning("fnm 安装后定位失败: %v", err)
+				continue
+			}
+
+			if commandExists("fnm") {
+				installed = true
+				ui.Success("fnm 安装成功（来源：%s）", source.name)
+				break
+			}
+		}
+
+		if !installed {
+			return fmt.Errorf("所有安装源均失败，最后错误: %w", lastErr)
 		}
 	}
 
-	// 使用 fnm 安装 Node.js
-	if err := runCommand("fnm", "install", version); err != nil {
+	// 3. 配置国内镜像环境变量
+	fnmEnv := []string{
+		"FNM_NODE_DIST_MIRROR=https://registry.npmmirror.com/-/binary/node",
+		"FNM_ARCH=" + runtime.GOARCH,
+	}
+
+	// 4. 使用fnm安装Node.js（使用镜像加速）
+	ui.Info("正在使用 fnm 安装 Node.js %s（国内镜像加速）...", version)
+	cmd := exec.Command("fnm", "install", version)
+	configureWindowsCommand(cmd)
+	cmd.Env = append(os.Environ(), fnmEnv...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("安装 Node.js 失败: %w", err)
 	}
 
-	// 设置为默认版本
+	// 5. 设置默认版本
 	if err := runCommand("fnm", "default", version); err != nil {
 		return fmt.Errorf("设置默认 Node.js 版本失败: %w", err)
 	}
 
-	// 应用 fnm 环境变量到当前进程
+	// 6. 应用fnm环境变量到当前进程
 	if err := applyFnmEnv(); err != nil {
 		ui.Warning("应用 fnm 环境变量失败: %v", err)
 	}
+
+	// 7. 持久化镜像配置到shell
+	persistFnmMirrorConfig()
 
 	return nil
 }
@@ -362,6 +422,7 @@ func (r *RustInstaller) Install(version string) error {
 		} else {
 			cmd = exec.Command("sh", "-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y")
 		}
+		configureWindowsCommand(cmd)
 		cmd.Env = append(os.Environ(),
 			"RUSTUP_DIST_SERVER=https://rsproxy.cn",
 			"RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
@@ -385,6 +446,7 @@ func (r *RustInstaller) Install(version string) error {
 	if commandExists("rustup") {
 		// 安装指定版本
 		cmd := exec.Command("rustup", "install", version)
+		configureWindowsCommand(cmd)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Env = append(os.Environ(),
@@ -454,7 +516,9 @@ func (j *JavaInstaller) Install(version string) error {
 	case "darwin", "linux":
 		err = j.installWithSdkman(version)
 	case "windows":
-		err = exec.Command("winget", "install", "Microsoft.OpenJDK."+version).Run()
+		cmd := exec.Command("winget", "install", "Microsoft.OpenJDK."+version)
+		configureWindowsCommand(cmd)
+		err = cmd.Run()
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
@@ -581,7 +645,9 @@ func (b *BunInstaller) Install(version string) error {
 	case "darwin", "linux":
 		err = b.installWithCurl()
 	case "windows":
-		err = exec.Command("winget", "install", "Jarred-Sumner.Bun").Run()
+		cmd := exec.Command("winget", "install", "Jarred-Sumner.Bun")
+		configureWindowsCommand(cmd)
+		err = cmd.Run()
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
@@ -640,6 +706,7 @@ func (b *BunInstaller) installWithCurl() error {
 			ui.Info("尝试备用安装源...")
 		}
 		cmd := exec.Command("bash", "-c", fmt.Sprintf("curl -fsSL %s | bash", url))
+		configureWindowsCommand(cmd)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Stdin = os.Stdin
