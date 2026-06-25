@@ -28,7 +28,10 @@ jobs:
       run: go mod download
 
     - name: Create dummy frontend/dist for embed
-      run: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
+      run: |
+        mkdir -p frontend/dist
+        touch frontend/dist/.gitkeep
+      shell: bash
 
     - name: Format check
       if: runner.os != 'Windows'
