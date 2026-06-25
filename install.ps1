@@ -10,8 +10,11 @@ Write-Host ""
 $arch = $env:PROCESSOR_ARCHITECTURE
 if ($arch -eq "AMD64") {
     $binaryName = "envkit-windows-amd64.exe"
+} elseif ($arch -eq "ARM64") {
+    Write-Host "⚠️  检测到 ARM64 架构，当前暂无原生 ARM64 构建。将使用 AMD64 版本（通过兼容层运行）。" -ForegroundColor Yellow
+    $binaryName = "envkit-windows-amd64.exe"
 } else {
-    Write-Host "⚠️  未检测到 64位 Intel/AMD 架构 (检测到: $arch)，将默认使用 AMD64 版本。" -ForegroundColor Yellow
+    Write-Host "⚠️  未检测到支持的架构 (检测到: $arch)，将默认使用 AMD64 版本。" -ForegroundColor Yellow
     $binaryName = "envkit-windows-amd64.exe"
 }
 
@@ -33,7 +36,7 @@ if (Test-Path $srcPath) {
     Write-Host "✅ EnvKit 已从本地复制并成功安装到: $destPath" -ForegroundColor Green
 } else {
     Write-Host "📦 正在尝试从 GitHub Releases 下载预编译的二进制文件..." -ForegroundColor Cyan
-    $url = "https://github.com/EvilJul/envkit/releases/latest/download/$binaryName"
+    $url = "https://github.com/fusheng/envkit/releases/latest/download/$binaryName"
     
     try {
         # 优先直接下载，限时 5 秒

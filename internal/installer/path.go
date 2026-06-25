@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"github.com/fusheng/envkit/internal/ui"
 )
 
 // AddDirToPath 将目录添加到当前进程的 PATH 中
@@ -60,24 +58,6 @@ func PersistPathEnv(dir string) error {
 			}
 		}
 	}
-	return nil
-}
-
-// persistPathEnvWindows Windows 平台持久化 PATH
-func persistPathEnvWindows(dir string) error {
-	// 使用 setx 命令修改用户环境变量
-	currentPath := os.Getenv("PATH")
-	if strings.Contains(currentPath, dir) {
-		return nil // 已存在
-	}
-
-	newPath := dir + ";" + currentPath
-	cmd := exec.Command("setx", "PATH", newPath)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("Windows PATH 持久化失败: %w", err)
-	}
-
-	ui.Info("PATH 已更新，请重启终端使其生效")
 	return nil
 }
 
@@ -252,7 +232,11 @@ func locateAndAddUvToPath() error {
 	}
 
 	for _, dir := range dirs {
-		uvPath := filepath.Join(dir, "uv")
+		uvName := "uv"
+		if runtime.GOOS == "windows" {
+			uvName = "uv.exe"
+		}
+		uvPath := filepath.Join(dir, uvName)
 		if _, err := os.Stat(uvPath); err == nil {
 			AddDirToPath(dir)
 			_ = PersistPathEnv(dir)
@@ -323,6 +307,28 @@ func locateAndAddBrewGoToPath(version string) {
 			binDir := filepath.Join(prefix, "bin")
 			AddDirToPath(binDir)
 			_ = PersistPathEnv(binDir)
+		}
+	}
+}
+
+// persistFnmMirrorConfig 将fnm国内镜像配置持久化到shell配置文件
+func persistFnmMirrorConfig() {
+	mirrorConfig := "\n# fnm 国内镜像配置 (added by envkit)\nexport FNM_NODE_DIST_MIRROR=\"https://registry.npmmirror.com/-/binary/node\"\n"
+
+	files := getShellConfigFiles()
+	for _, file := range files {
+		if _, err := os.Stat(file); err == nil {
+			content, err := os.ReadFile(file)
+			if err == nil {
+				// 避免重复写入
+				if !strings.Contains(string(content), "FNM_NODE_DIST_MIRROR") {
+					f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0644)
+					if err == nil {
+						_, _ = f.WriteString(mirrorConfig)
+						_ = f.Close()
+					}
+				}
+			}
 		}
 	}
 }

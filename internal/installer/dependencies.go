@@ -88,7 +88,22 @@ var CommonDependencies = []SystemDependency{
 // CheckAndInstallDependencies 检查并安装系统依赖
 func CheckAndInstallDependencies(deps []SystemDependency) error {
 	if runtime.GOOS == "windows" {
-		return nil // Windows 不检查系统工具
+		// Windows 上仅检查关键工具（curl 在旧版 Windows 中可能不存在）
+		for _, dep := range deps {
+			if dep.Name == "curl" {
+				found := false
+				for _, cmd := range dep.Commands {
+					if commandExists(cmd) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					ui.Warning("Windows 上未检测到 curl，部分下载功能可能受限。建议安装 curl 或使用 Windows 10 1803+ 版本。")
+				}
+			}
+		}
+		return nil
 	}
 
 	var missing []SystemDependency

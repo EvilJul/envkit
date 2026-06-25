@@ -1,0 +1,12 @@
+run:
+  timeout: 5m
+
+issues:
+  exclude-dirs:
+    - frontend
+  exclude-rules:
+    # 排除根目录main.go的embed错误（GUI入口文件）
+    - path: main.go
+      linters:
+        - typecheck
+      text: "pattern all:frontend/dist"

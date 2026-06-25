@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Build
+  build-cli:
+    name: Build CLI
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -27,31 +27,100 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.21'
+        go-version: '1.22'
 
     - name: Get dependencies
       run: go mod download
 
-    - name: Build
+    - name: Build CLI
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
       run: |
+        mkdir -p dist
         OUTPUT_NAME=envkit-${{ matrix.goos }}-${{ matrix.goarch }}
         if [ "${{ matrix.goos }}" = "windows" ]; then
           OUTPUT_NAME="${OUTPUT_NAME}.exe"
         fi
         go build -ldflags="-s -w" -o dist/${OUTPUT_NAME} ./cmd/envkit
 
-    - name: Upload artifact
+    - name: Upload CLI artifact
       uses: actions/upload-artifact@v4
       with:
-        name: envkit-${{ matrix.goos }}-${{ matrix.goarch }}
+        name: cli-${{ matrix.goos }}-${{ matrix.goarch }}
         path: dist/*
 
+  build-gui:
+    name: Build GUI
+    strategy:
+      matrix:
+        platform:
+          - os: macos-latest
+            name: macos
+          - os: ubuntu-22.04
+            name: linux
+          - os: windows-latest
+            name: windows
+    runs-on: ${{ matrix.platform.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Wails
+      run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+    - name: Install Linux dependencies
+      if: matrix.platform.name == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+
+    - name: Install frontend dependencies
+      run: cd frontend && npm install
+
+    - name: Build GUI
+      run: wails build
+
+    - name: Package macOS App
+      if: matrix.platform.name == 'macos'
+      run: |
+        cd build/bin
+        zip -r envkit-gui-macos.zip envkit-gui.app
+
+    - name: Upload macOS GUI artifact
+      if: matrix.platform.name == 'macos'
+      uses: actions/upload-artifact@v4
+      with:
+        name: gui-macos
+        path: build/bin/envkit-gui-macos.zip
+
+    - name: Upload Windows GUI artifact
+      if: matrix.platform.name == 'windows'
+      uses: actions/upload-artifact@v4
+      with:
+        name: gui-windows
+        path: build/bin/envkit-gui.exe
+
+    - name: Upload Linux GUI artifact
+      if: matrix.platform.name == 'linux'
+      uses: actions/upload-artifact@v4
+      with:
+        name: gui-linux
+        path: build/bin/envkit-gui
+
   release:
-    name: Release
-    needs: build
+    name: Create Release
+    needs: [build-cli, build-gui]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
 
@@ -59,17 +128,54 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Download artifacts
+    - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
-        path: dist
+        path: artifacts
+
+    - name: Prepare release assets
+      run: |
+        mkdir -p release
+        # CLI binaries
+        find artifacts/cli-* -type f -exec cp {} release/ \;
+        # GUI applications
+        find artifacts/gui-* -type f -exec cp {} release/ \;
+        ls -lh release/
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: dist/**/*
+        files: release/*
         draft: false
         prerelease: false
         generate_release_notes: true
+        body: |
+          ## 📦 安装包说明
+
+          ### CLI 命令行工具
+          - `envkit-linux-amd64` - Linux x86_64
+          - `envkit-linux-arm64` - Linux ARM64
+          - `envkit-darwin-amd64` - macOS Intel
+          - `envkit-darwin-arm64` - macOS Apple Silicon
+          - `envkit-windows-amd64.exe` - Windows x64
+
+          ### GUI 桌面应用
+          - `envkit-gui-macos.zip` - macOS 应用（解压后拖到应用程序文件夹）
+          - `envkit-gui.exe` - Windows 应用
+          - `envkit-gui` - Linux 应用
+
+          ## ⚡ 快速安装
+
+          **macOS/Linux CLI:**
+          ```bash
+          curl -O https://github.com/fusheng/envkit/releases/download/${{ github.ref_name }}/envkit-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)
+          chmod +x envkit-*
+          sudo mv envkit-* /usr/local/bin/envkit
+          ```
+
+          **Windows CLI (PowerShell):**
+          ```powershell
+          Invoke-WebRequest -Uri "https://github.com/fusheng/envkit/releases/download/${{ github.ref_name }}/envkit-windows-amd64.exe" -OutFile "envkit.exe"
+          ```
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

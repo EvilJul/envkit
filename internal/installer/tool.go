@@ -358,7 +358,7 @@ func installWithWinget(packageId string) error {
 	version := strings.TrimSpace(string(out))
 	ui.Info("检测到 winget 版本: %s", version)
 
-	return runCommand("winget", "install", packageId)
+	return runCommand("winget", "install", packageId, "--silent", "--accept-package-agreements", "--accept-source-agreements")
 }
 
 // GetToolInstaller 获取工具安装器
@@ -844,6 +844,7 @@ func fileExists(path string) bool {
 // runCommand 执行外部命令并实时输出，若出错则在 Error 中附加详细的错误内容（包括 stdout/stderr 末尾）
 func runCommand(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
+	configureWindowsCommand(cmd)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 

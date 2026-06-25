@@ -16,8 +16,8 @@ type ManifestItem struct {
 	Name        string    `json:"name"`
 	Type        string    `json:"type"` // "language" or "tool"
 	Version     string    `json:"version"`
-	Paths       []string  `json:"paths"`         // 创建的文件夹/文件路径
-	ShellLines  []string  `json:"shell_lines"`   // 写入 shell 配置文件中的关键字特征
+	Paths       []string  `json:"paths"`       // 创建的文件夹/文件路径
+	ShellLines  []string  `json:"shell_lines"` // 写入 shell 配置文件中的关键字特征
 	InstalledAt time.Time `json:"installed_at"`
 }
 
@@ -178,9 +178,14 @@ func CleanShellConfigs(keywords []string) error {
 			newLines = append(newLines, line)
 		}
 
-		// 写回文件并去除多余的空行
+		// 写回文件，保留原始文件权限
 		newContent := strings.Join(newLines, "\n")
-		_ = os.WriteFile(file, []byte(newContent), 0644)
+		info, _ := os.Stat(file)
+		perm := os.FileMode(0644)
+		if info != nil {
+			perm = info.Mode()
+		}
+		_ = os.WriteFile(file, []byte(newContent), perm)
 	}
 
 	return nil
