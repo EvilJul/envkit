@@ -42,9 +42,9 @@ func (r *Registry) initMirrors() {
 
 	// Rust 镜像源
 	r.mirrors["rust"] = map[string]string{
-		"ustc":     "https://mirrors.ustc.edu.cn/crates.io-index",
-		"sjtu":     "https://mirrors.sjtug.sjtu.edu.cn/git/crates.io-index",
-		"tsinghua": "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git",
+		"ustc":      "https://mirrors.ustc.edu.cn/crates.io-index",
+		"sjtu":      "https://mirrors.sjtug.sjtu.edu.cn/git/crates.io-index",
+		"tsinghua":  "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git",
 		"bytedance": "https://rsproxy.cn",
 	}
 
@@ -57,16 +57,16 @@ func (r *Registry) initMirrors() {
 
 	// Maven 镜像源
 	r.mirrors["maven"] = map[string]string{
-		"aliyun":   "https://maven.aliyun.com/repository/public",
-		"tencent":  "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/",
-		"huawei":   "https://repo.huaweicloud.com/repository/maven/",
-		"netease":  "https://mirrors.163.com/maven/repository/maven-public/",
+		"aliyun":  "https://maven.aliyun.com/repository/public",
+		"tencent": "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/",
+		"huawei":  "https://repo.huaweicloud.com/repository/maven/",
+		"netease": "https://mirrors.163.com/maven/repository/maven-public/",
 	}
 
 	// Composer (PHP) 镜像源
 	r.mirrors["composer"] = map[string]string{
-		"aliyun":   "https://mirrors.aliyun.com/composer/",
-		"tencent":  "https://mirrors.cloud.tencent.com/composer/",
+		"aliyun":      "https://mirrors.aliyun.com/composer/",
+		"tencent":     "https://mirrors.cloud.tencent.com/composer/",
 		"phpcomposer": "https://packagist.phpcomposer.com",
 	}
 
@@ -83,6 +83,22 @@ func (r *Registry) initMirrors() {
 		"tsinghua": "https://mirrors.tuna.tsinghua.edu.cn/git/homebrew",
 		"ustc":     "https://mirrors.ustc.edu.cn/brew.git",
 		"aliyun":   "https://mirrors.aliyun.com/homebrew",
+	}
+
+	// Android SDK 镜像源
+	r.mirrors["android"] = map[string]string{
+		"aliyun":   "https://mirrors.aliyun.com/android.googlesource.com/",
+		"tencent":  "https://mirrors.cloud.tencent.com/AndroidSDK/",
+		"huawei":   "https://repo.huaweicloud.com/android/",
+		"tsinghua": "https://mirrors.tuna.tsinghua.edu.cn/android/",
+	}
+
+	// Gradle 镜像源
+	r.mirrors["gradle"] = map[string]string{
+		"aliyun":   "https://mirrors.aliyun.com/macports/distfiles/gradle/",
+		"tencent":  "https://mirrors.cloud.tencent.com/gradle/",
+		"huawei":   "https://repo.huaweicloud.com/gradle/",
+		"tsinghua": "https://mirrors.tuna.tsinghua.edu.cn/gradle/",
 	}
 }
 
@@ -108,6 +124,8 @@ func (r *Registry) GetDefaultMirror(mirrorType string) string {
 		"composer": "aliyun",
 		"docker":   "aliyun",
 		"homebrew": "tsinghua",
+		"android":  "aliyun",
+		"gradle":   "aliyun",
 	}
 
 	if defaultName, ok := defaults[mirrorType]; ok {
