@@ -38,6 +38,12 @@ func lookPathWithFallback(name string) (string, error) {
 		filepath.Join(home, ".local", "share", "fnm"),
 		filepath.Join(home, "Library", "Application Support", "fnm"),
 		"/usr/local/go/bin",
+		// Android SDK 常见安装路径（macOS / Linux / 备用）
+		filepath.Join(home, "Library", "Android", "sdk", "platform-tools"),
+		filepath.Join(home, "Library", "Android", "sdk", "cmdline-tools", "latest", "bin"),
+		filepath.Join(home, "Android", "Sdk", "platform-tools"),
+		filepath.Join(home, "Android", "Sdk", "cmdline-tools", "latest", "bin"),
+		filepath.Join(home, "Android", "platform-tools"),
 	}
 
 	for _, dir := range fallbacks {
@@ -190,8 +196,6 @@ func cleanVersionString(name string, raw string) string {
 	return firstLine
 }
 
-
-
 // DetectTool 检测单个工具
 func DetectTool(name string, versionFlag string) *Tool {
 	path, err := lookPathWithFallback(name)
@@ -234,16 +238,18 @@ func DetectLanguages() map[string]*Tool {
 // DetectTools 检测常见开发工具
 func DetectTools() map[string]*Tool {
 	tools := map[string]*Tool{
-		"git":      DetectTool("git", "--version"),
-		"docker":   DetectTool("docker", "--version"),
-		"code":     DetectTool("code", "--version"),
-		"vim":      DetectTool("vim", "--version"),
-		"curl":     DetectTool("curl", "--version"),
-		"wget":     DetectTool("wget", "--version"),
-		"conda":    DetectTool("conda", "--version"),
-		"kubectl":  DetectTool("kubectl", "version --client"),
-		"minikube": DetectTool("minikube", "version"),
-		"espidf":   DetectTool("eim", "--version"),
+		"git":        DetectTool("git", "--version"),
+		"docker":     DetectTool("docker", "--version"),
+		"code":       DetectTool("code", "--version"),
+		"vim":        DetectTool("vim", "--version"),
+		"curl":       DetectTool("curl", "--version"),
+		"wget":       DetectTool("wget", "--version"),
+		"conda":      DetectTool("conda", "--version"),
+		"kubectl":    DetectTool("kubectl", "version --client"),
+		"minikube":   DetectTool("minikube", "version"),
+		"espidf":     DetectTool("eim", "--version"),
+		"android":    DetectTool("adb", "--version"),
+		"sdkmanager": DetectTool("sdkmanager", "--version"),
 	}
 
 	return tools

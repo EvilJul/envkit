@@ -152,6 +152,8 @@ func handleInstall() {
 				tools = append(tools, "minikube")
 			case "espidf", "esp-idf":
 				tools = append(tools, "espidf")
+			case "android", "android-sdk":
+				tools = append(tools, "android")
 
 			// 数据库类
 			case "postgresql", "postgres":
@@ -245,6 +247,7 @@ func handleInteractiveInstall() {
 		{"Kubectl", "kubectl", "tool", ""},
 		{"Minikube", "minikube", "tool", ""},
 		{"ESP-IDF", "espidf", "tool", ""},
+		{"Android SDK", "android", "tool", ""},
 		{"Redis", "redis", "database", "7"},
 		{"MySQL", "mysql", "database", "8.0"},
 	}
@@ -528,6 +531,7 @@ func handleList() {
 	toolTable.AddRow("kubectl", getStatusString(tools["kubectl"]), "Kubernetes 命令行控制工具")
 	toolTable.AddRow("minikube", getStatusString(tools["minikube"]), "本地单节点 Kubernetes 集群运行工具")
 	toolTable.AddRow("espidf", getStatusString(tools["espidf"]), "ESP-IDF (EIM) 乐鑫物联网开发框架")
+	toolTable.AddRow("android", getStatusString(tools["android"]), "Android SDK (cmdline-tools/platform-tools/build-tools)")
 	toolTable.Render()
 
 	ui.PrintSection("数据库容器 (Databases via Docker)")
@@ -602,12 +606,14 @@ func handleMirror() {
 		fmt.Println("用法: envkit mirror <language> [mirror-name]")
 		fmt.Println()
 		fmt.Println("支持的语言:")
-		fmt.Println("  npm, pip, go, rust")
+		fmt.Println("  npm, pip, go, rust, gradle, android")
 		fmt.Println()
 		fmt.Println("示例:")
 		fmt.Println("  envkit mirror npm npmmirror")
 		fmt.Println("  envkit mirror pip tsinghua")
 		fmt.Println("  envkit mirror go goproxy")
+		fmt.Println("  envkit mirror gradle aliyun")
+		fmt.Println("  envkit mirror android aliyun")
 		os.Exit(1)
 	}
 
@@ -640,6 +646,18 @@ func handleMirror() {
 		}
 	case "rust":
 		configurator := mirror.NewRustConfigurator(registry)
+		if err := configurator.Configure(mirrorName); err != nil {
+			ui.Error("配置失败: %v", err)
+			os.Exit(1)
+		}
+	case "android":
+		configurator := mirror.NewAndroidConfigurator(registry)
+		if err := configurator.Configure(mirrorName); err != nil {
+			ui.Error("配置失败: %v", err)
+			os.Exit(1)
+		}
+	case "gradle":
+		configurator := mirror.NewGradleConfigurator(registry)
 		if err := configurator.Configure(mirrorName); err != nil {
 			ui.Error("配置失败: %v", err)
 			os.Exit(1)
@@ -690,6 +708,8 @@ func printUsage() {
 	fmt.Println("  ./envkit uninstall --all              # 卸载所有组件并清理环境配置")
 	fmt.Println("  ./envkit detect                       # 检测系统环境")
 	fmt.Println("  ./envkit mirror npm npmmirror         # 配置npm镜像源")
+	fmt.Println("  ./envkit mirror android aliyun        # 配置Android SDK 镜像源")
+	fmt.Println("  ./envkit install android              # 安装 Android SDK 全局开发环境")
 	fmt.Println("  ./envkit docker start postgres 16     # 启动 PostgreSQL")
 	fmt.Println("  ./envkit docker list                  # 查看运行容器")
 }
@@ -863,7 +883,7 @@ func handleUninstall() {
 		if item.Type == "language" {
 			typeStr = "语言"
 		}
-		fmt.Printf("  %d) %-10s (%s) [版本: %s, 安装时间: %s]\n", 
+		fmt.Printf("  %d) %-10s (%s) [版本: %s, 安装时间: %s]\n",
 			i+1, name, typeStr, item.Version, item.InstalledAt.Format("2006-01-02 15:04:05"))
 	}
 	fmt.Printf("  %d) 卸载所有组件 (--all)\n", len(names)+1)

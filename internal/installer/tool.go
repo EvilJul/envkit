@@ -378,6 +378,8 @@ func GetToolInstaller(tool string) ToolInstaller {
 		return &MinikubeInstaller{}
 	case "espidf", "esp-idf":
 		return &EspIdfInstaller{}
+	case "android", "android-sdk":
+		return &AndroidInstaller{}
 	default:
 		return nil
 	}
