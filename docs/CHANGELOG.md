@@ -99,6 +99,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增 internal/docker 模块 (~300 行)
 - 总代码量约 2194 行
 
+## [Unreleased] / 0.3.0
+
+### 新增功能
+- ✨ 全局安装 Android SDK 开发环境（cmdline-tools、platform-tools、build-tools、platforms）
+- ✨ 通过国内镜像源（阿里云/腾讯云/华为云）下载 Android SDK
+- ✨ 全局 Gradle 国内镜像源配置（aliyun）
+- ✨ 同步支持 CLI 和 GUI 两种方式管理 Android SDK
+- ✨ 新增命令 `envkit install android`、`envkit mirror android` 和 `envkit mirror gradle`
+
+### 改进
+- 更新 detector 支持检测 adb 和 sdkmanager
+- GUI 桌面客户端 Tools 和 Settings 页面添加 Android 管理入口
+
+### 文档
+- 新增 `templates/languages/android.yaml` 模板
+- 新增 `templates/examples/android-mobile.yaml` 移动端开发示例
+- 新增 `docs/ANDROID_SETUP.md` Android 开发环境配置指南
+
 ## [Unreleased]
 
 ### Planned for v0.3.0

@@ -1,0 +1,18 @@
+version: "1.0"
+name: "Android Development Environment"
+
+languages:
+  - name: java
+    version: "21"
+
+tools:
+  - git
+  - vscode
+  - android
+    # Android 包含：cmdline-tools、platform-tools (adb)、build-tools、platforms
+    # 默认通过阿里云镜像源下载
+
+databases: []
+
+shell:
+  type: zsh

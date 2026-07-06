@@ -8,6 +8,8 @@ EnvKit 是一个轻量级、跨平台的本地开发环境一键搭建与配置�
 
 ### 核心功能
 * **多语言一键部署**：支持 Node.js (基于 fnm)、Python (基于 uv)、Go (官方包)、Rust (基于 rustup)、Java (基于 SDKMAN!) 和 Bun。
+* **Android 开发环境**：一键安装 Android SDK（cmdline-tools、platform-tools、build-tools、platforms），默认通过阿里云镜像源下载，国内网络即可顺畅搭建。
+* **Gradle 国内镜像源配置**：内置 Gradle 全局镜像源管理（阿里云/腾讯云/华为云/清华源），构建下载速度飞快。
 * **国内镜像自动加速**：自动为各环境配置最快的国内源（如 npmmirror、清华源、中科大源、GoProxy 等）。
 * **常用工具集成安装**：支持 Git、Docker、VSCode、Miniconda、kubectl 和 minikube 的静默安装与配置。
 * **开发数据库秒级启动**：基于 Docker 一键启动 PostgreSQL、Redis、MySQL 和 MongoDB 容器，自动持久化数据。
@@ -18,7 +20,7 @@ EnvKit 是一个轻量级、跨平台的本地开发环境一键搭建与配置�
 * **系统原生界面**：纯白背景、轻量化设计、无 AI 风格
 * **可视化管理**：
   - **Languages**：管理编程语言环境（Node.js, Python, Go, Rust, Java, Bun）
-  - **Tools**：管理开发工具（Git, Docker, VS Code, Miniconda, Kubectl, Minikube）
+  - **Tools**：管理开发工具（Git, Docker, VS Code, Miniconda, Kubectl, Minikube, Android SDK）
   - **Database**：管理数据库容器（PostgreSQL, Redis, MySQL, MongoDB）
   - **Environment**：管理系统环境变量（用户变量、系统变量、PATH 管理）
   - **Settings**：系统信息、镜像源配置、通用设置
@@ -71,7 +73,11 @@ envkit install
   ```bash
   envkit install -f templates/languages/java.yaml
   ```
-* **其它预设模板**：可以在 `templates/languages/` 目录下找到 `node.yaml`、`python.yaml`、`rust.yaml`、`bun.yaml`、`miniconda.yaml` 等。
+* **其它预设模板**：可以在 `templates/languages/` 目录下找到 `node.yaml`、`python.yaml`、`rust.yaml`、`bun.yaml`、`miniconda.yaml`、`android.yaml` 等。
+* **移动端开发模板**：
+  ```bash
+  envkit install -f templates/examples/android-mobile.yaml
+  ```
 
 ### 4. 本地环境全量扫描
 扫描当前系统已安装的语言开发环境、工具软件及可用的包管理器：
@@ -86,7 +92,24 @@ envkit mirror npm npmmirror   # 配置 npm 淘宝源
 envkit mirror pip tsinghua    # 配置 pip 清华源
 envkit mirror go goproxy      # 配置 Go 代理
 envkit mirror rust ustc       # 配置 Rust 中科大源
+envkit mirror android aliyun  # 配置 Android SDK 阿里云镜像源
+envkit mirror gradle aliyun   # 配置 Gradle 全局阿里云镜像源
 ```
+
+### 5.1 安装 Android 开发环境
+EnvKit 提供了一键安装 Android SDK 的能力，默认从阿里云镜像源下载，适合国内网络环境：
+```bash
+# 直接安装 Android 工具链（包含 cmdline-tools、platform-tools、build-tools、platforms）
+envkit install android
+
+# 使用模板进行批量安装（包含 Java 21 + Android SDK）
+envkit install -f templates/languages/android.yaml
+
+# 移动端开发示例模板（Java + Python + Android SDK）
+envkit install -f templates/examples/android-mobile.yaml
+```
+
+更多细节请参考 [Android 开发环境配置指南](docs/ANDROID_SETUP.md)。
 
 ### 6. 常用数据库一键运行 (Docker)
 ```bash
@@ -163,6 +186,7 @@ shell:
 ## 延伸阅读
 
 * [ESP-IDF 全平台环境安装配置与部署教程](docs/esp_idf_setup.md)
+* [Android 开发环境配置指南](docs/ANDROID_SETUP.md)
 * [EnvKit 详细使用指南](docs/USAGE.md)
 * [EnvKit 架构设计说明书](docs/ARCHITECTURE.md)
 
