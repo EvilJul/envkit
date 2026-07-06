@@ -1,11 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { GetSystemInfo } from '../../wailsjs/go/main/App';
+  import { GetSystemInfo, ConfigureAndroidMirror, ConfigureGradleMirror, GetAndroidMirrors, GetGradleMirrors } from '../../wailsjs/go/main/App';
 
   interface SystemInfo {
     os: string;
     architecture: string;
     distribution: string;
+  }
+
+  interface MirrorInfo {
+    name: string;
+    url: string;
   }
 
   let systemInfo: SystemInfo = {
@@ -20,8 +25,13 @@
     defaultNpmMirror: 'npmmirror',
     defaultPipMirror: 'tsinghua',
     defaultGoMirror: 'goproxy',
+    androidMirror: 'aliyun',
+    gradleMirror: 'aliyun',
     showExpertOptions: false
   };
+
+  let androidApplying = false;
+  let gradleApplying = false;
 
   const mirrorOptions = {
     npm: [
@@ -38,6 +48,18 @@
       { value: 'goproxy', label: 'goproxy.cn' },
       { value: 'aliyun', label: '阿里云' },
       { value: 'official', label: 'Official (官方源)' }
+    ],
+    android: [
+      { value: 'aliyun', label: '阿里云 (推荐)' },
+      { value: 'tencent', label: '腾讯云' },
+      { value: 'huawei', label: '华为云' },
+      { value: 'tsinghua', label: '清华大学' }
+    ],
+    gradle: [
+      { value: 'aliyun', label: '阿里云 (推荐)' },
+      { value: 'tencent', label: '腾讯云' },
+      { value: 'huawei', label: '华为云' },
+      { value: 'tsinghua', label: '清华大学' }
     ]
   };
 
@@ -48,6 +70,30 @@
       console.error('Failed to get system info:', err);
     }
   });
+
+  async function applyAndroidMirror() {
+    if (!confirm(`确定要应用 Android SDK 镜像源配置吗？\n\n将配置：${settings.androidMirror}\n\n这会修改 ~/.android/repositories.cfg、~/.gradle/init.d/ 脚本以及 shell 配置文件。`)) return;
+    androidApplying = true;
+    try {
+      await ConfigureAndroidMirror(settings.androidMirror);
+      alert('Android SDK 镜像源配置成功！\n\n请重新打开终端或执行 source ~/.zshrc / source ~/.bashrc 使环境变量生效。');
+    } catch (err) {
+      alert(`Android 镜像源配置失败: ${err}`);
+    }
+    androidApplying = false;
+  }
+
+  async function applyGradleMirror() {
+    if (!confirm(`确定要应用 Gradle 镜像源配置吗？\n\n将配置：${settings.gradleMirror}\n\n这会修改 ~/.gradle/init.d/aliyun.gradle 和 ~/.gradle/init.gradle 脚本。`)) return;
+    gradleApplying = true;
+    try {
+      await ConfigureGradleMirror(settings.gradleMirror);
+      alert('Gradle 镜像源配置成功！');
+    } catch (err) {
+      alert(`Gradle 镜像源配置失败: ${err}`);
+    }
+    gradleApplying = false;
+  }
 
   function saveSettings() {
     // TODO: 实现设置保存
@@ -63,6 +109,8 @@
       defaultNpmMirror: 'npmmirror',
       defaultPipMirror: 'tsinghua',
       defaultGoMirror: 'goproxy',
+      androidMirror: 'aliyun',
+      gradleMirror: 'aliyun',
       showExpertOptions: false
     };
     alert('设置已重置');
@@ -152,6 +200,47 @@
             <option value={option.value}>{option.label}</option>
           {/each}
         </select>
+      </div>
+    </section>
+
+    <!-- Android / Gradle 镜像源配置 -->
+    <section class="settings-section">
+      <h2>Android / Gradle 镜像源</h2>
+      <div class="setting-item">
+        <div class="setting-info">
+          <label>Android SDK 镜像源</label>
+          <p>用于加速下载 Android SDK 组件（cmdline-tools / platform-tools / build-tools / platforms）</p>
+        </div>
+        <select bind:value={settings.androidMirror}>
+          {#each mirrorOptions.android as option}
+            <option value={option.value}>{option.label}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <label>Gradle 镜像源</label>
+          <p>用于加速 Gradle 构建时的依赖下载（替换所有 Maven 仓库为镜像源）</p>
+        </div>
+        <select bind:value={settings.gradleMirror}>
+          {#each mirrorOptions.gradle as option}
+            <option value={option.value}>{option.label}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="setting-item mirror-actions">
+        <div class="setting-info">
+          <label>立即应用</label>
+          <p>点击按钮将选中的镜像源写入 ~/.android/repositories.cfg、~/.gradle/init.d/ 以及 ~/.gradle/init.gradle</p>
+        </div>
+        <div class="action-buttons">
+          <button class="btn-primary" on:click={applyAndroidMirror} disabled={androidApplying || gradleApplying}>
+            {androidApplying ? '配置中...' : '应用 Android 镜像源'}
+          </button>
+          <button class="btn-secondary" on:click={applyGradleMirror} disabled={androidApplying || gradleApplying}>
+            {gradleApplying ? '配置中...' : '应用 Gradle 镜像源'}
+          </button>
+        </div>
       </div>
     </section>
 
@@ -435,5 +524,21 @@
   .btn-secondary {
     background: #e5e5e5;
     color: #1d1d1f;
+  }
+
+  .action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 200px;
+  }
+
+  .action-buttons button {
+    width: 100%;
+    padding: 8px 16px;
+  }
+
+  .setting-item.mirror-actions {
+    align-items: flex-start;
   }
 </style>
