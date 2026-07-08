@@ -1,0 +1,20 @@
+version: "1.0"
+name: "Android Mobile Development"
+
+languages:
+  - name: java
+    version: "21"
+    mirror: tsinghua
+  - name: python
+    version: "3.10.11"
+    mirror: tsinghua
+
+tools:
+  - git
+  - vscode
+  - android
+
+databases: []
+
+shell:
+  type: zsh

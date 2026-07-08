@@ -14,9 +14,10 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
+	"github.com/fusheng/envkit/internal/appapi"
 	"github.com/fusheng/envkit/internal/detector"
-	"github.com/fusheng/envkit/internal/installer"
 	"github.com/fusheng/envkit/internal/docker"
+	"github.com/fusheng/envkit/internal/progress"
 )
 
 //go:embed all:frontend/dist
@@ -32,22 +33,12 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	detector.InitDetectionEnvironment()
 }
 
-type Language struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName"`
-	Version     string `json:"version"`
-	Installed   bool   `json:"installed"`
-	Mirror      string `json:"mirror"`
-}
+type Language = appapi.Language
 
-type Tool struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName"`
-	Version     string `json:"version"`
-	Installed   bool   `json:"installed"`
-}
+type Tool = appapi.Tool
 
 type Database struct {
 	Name    string `json:"name"`
@@ -87,69 +78,75 @@ func (a *App) GetSystemInfo() SystemInfo {
 }
 
 func (a *App) GetLanguages() []Language {
-	detected := detector.DetectLanguages()
-	languages := []Language{
-		{Name: "node", DisplayName: "Node.js", Version: "20.11.1", Installed: false},
-		{Name: "python", DisplayName: "Python", Version: "3.10.11", Installed: false},
-		{Name: "go", DisplayName: "Go", Version: "1.22.0", Installed: false},
-		{Name: "rust", DisplayName: "Rust", Version: "stable", Installed: false},
-		{Name: "java", DisplayName: "Java", Version: "21", Installed: false},
-		{Name: "bun", DisplayName: "Bun", Version: "latest", Installed: false},
-	}
-	for i := range languages {
-		key := languages[i].Name
-		if key == "rust" {
-			key = "rustc"
-		}
-		if tool := detected[key]; tool != nil && tool.Installed {
-			languages[i].Installed = true
-			languages[i].Version = tool.Version
-		}
-	}
-	return languages
+	return appapi.GetLanguages()
 }
 
 func (a *App) InstallLanguage(name string, version string) error {
-	langInstaller := installer.GetInstaller(name)
-	if langInstaller == nil {
-		return fmt.Errorf("不支持的语言: %s", name)
-	}
-	return langInstaller.Install(version)
+	return appapi.InstallLanguageWithProgress(name, version, progress.NewWailsReporter(a.ctx, "task-progress", name))
 }
 
 func (a *App) UninstallLanguage(name string) error {
-	return installer.UninstallComponent(name)
+	return appapi.UninstallLanguageWithProgress(name, progress.NewWailsReporter(a.ctx, "task-progress", name))
+}
+
+func (a *App) SetLanguageMirror(language string, mirrorName string) error {
+	return appapi.SetLanguageMirror(language, mirrorName)
 }
 
 func (a *App) GetTools() []Tool {
-	detected := detector.DetectTools()
-	tools := []Tool{
-		{Name: "git", DisplayName: "Git", Version: "", Installed: false},
-		{Name: "docker", DisplayName: "Docker", Version: "", Installed: false},
-		{Name: "code", DisplayName: "VS Code", Version: "", Installed: false},
-		{Name: "conda", DisplayName: "Miniconda", Version: "", Installed: false},
-		{Name: "kubectl", DisplayName: "Kubectl", Version: "", Installed: false},
-		{Name: "minikube", DisplayName: "Minikube", Version: "", Installed: false},
-	}
-	for i := range tools {
-		if tool := detected[tools[i].Name]; tool != nil && tool.Installed {
-			tools[i].Installed = true
-			tools[i].Version = tool.Version
-		}
-	}
-	return tools
+	return appapi.GetTools()
 }
 
 func (a *App) InstallTool(name string) error {
-	toolInstaller := installer.GetToolInstaller(name)
-	if toolInstaller == nil {
-		return fmt.Errorf("不支持的工具: %s", name)
-	}
-	return toolInstaller.Install()
+	return appapi.InstallToolWithProgress(name, progress.NewWailsReporter(a.ctx, "task-progress", name))
 }
 
 func (a *App) UninstallTool(name string) error {
-	return installer.UninstallComponent(name)
+	return appapi.UninstallToolWithProgress(name, progress.NewWailsReporter(a.ctx, "task-progress", name))
+}
+
+type AndroidInfo = appapi.AndroidInfo
+
+func (a *App) InstallAndroid() error {
+	return appapi.InstallAndroidWithProgress(progress.NewWailsReporter(a.ctx, "task-progress", "android"))
+}
+
+func (a *App) UninstallAndroid() error {
+	return appapi.UninstallAndroidWithProgress(progress.NewWailsReporter(a.ctx, "task-progress", "android"))
+}
+
+func (a *App) GetAndroidInfo() AndroidInfo {
+	return appapi.GetAndroidInfo()
+}
+
+func (a *App) ConfigureAndroidMirror(mirrorName string) error {
+	return appapi.ConfigureAndroidMirrorWithProgress(mirrorName, progress.NewWailsReporter(a.ctx, "task-progress", "android-mirror"))
+}
+
+func (a *App) ConfigureGradleMirror(mirrorName string) error {
+	return appapi.ConfigureGradleMirrorWithProgress(mirrorName, progress.NewWailsReporter(a.ctx, "task-progress", "gradle-mirror"))
+}
+
+func (a *App) GetAndroidMirrors() []appapi.MirrorOption {
+	return appapi.GetAndroidMirrors()
+}
+
+func (a *App) GetGradleMirrors() []appapi.MirrorOption {
+	return appapi.GetGradleMirrors()
+}
+
+type Settings = appapi.Settings
+
+func (a *App) GetSettings() Settings {
+	return appapi.GetSettings()
+}
+
+func (a *App) SaveSettings(settings Settings) (Settings, error) {
+	return appapi.SaveSettings(settings)
+}
+
+func (a *App) ResetSettings() Settings {
+	return appapi.ResetSettings()
 }
 
 func (a *App) GetDatabases() []Database {
@@ -158,32 +155,15 @@ func (a *App) GetDatabases() []Database {
 }
 
 func (a *App) StartDatabase(name string, version string) error {
-	dockerMgr := docker.NewContainerManager()
-	if !dockerMgr.IsDockerRunning() {
-		return fmt.Errorf("Docker 未运行，请先启动 Docker")
-	}
-	switch name {
-	case "postgres", "postgresql":
-		return dockerMgr.StartPostgreSQL(version, "postgres")
-	case "redis":
-		return dockerMgr.StartRedis(version)
-	case "mysql":
-		return dockerMgr.StartMySQL(version, "mysql")
-	case "mongodb", "mongo":
-		return dockerMgr.StartMongoDB(version)
-	default:
-		return fmt.Errorf("不支持的数据库: %s", name)
-	}
+	return appapi.StartDatabaseWithProgress(name, version, progress.NewWailsReporter(a.ctx, "task-progress", name))
 }
 
 func (a *App) StopDatabase(containerName string) error {
-	dockerMgr := docker.NewContainerManager()
-	return dockerMgr.StopContainer(containerName)
+	return appapi.StopDatabaseWithProgress(containerName, progress.NewWailsReporter(a.ctx, "task-progress", containerName))
 }
 
 func (a *App) RemoveDatabase(containerName string, removeVolume bool) error {
-	dockerMgr := docker.NewContainerManager()
-	return dockerMgr.RemoveContainer(containerName, removeVolume)
+	return appapi.RemoveDatabaseWithProgress(containerName, removeVolume, progress.NewWailsReporter(a.ctx, "task-progress", containerName))
 }
 
 func (a *App) GetStacks() []Stack {

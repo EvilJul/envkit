@@ -18,29 +18,16 @@ type Tool struct {
 
 // lookPathWithFallback 尝试在系统的 PATH 中查找命令，如果找不到，则在常见的默认安装路径中查找
 func lookPathWithFallback(name string) (string, error) {
+	InitDetectionEnvironment()
+
 	path, err := exec.LookPath(name)
 	if err == nil {
 		return path, nil
 	}
 
-	home, errDir := os.UserHomeDir()
-	if errDir != nil {
-		return "", err
-	}
+	fallbackDirs := toolSearchDirs()
 
-	fallbacks := []string{
-		filepath.Join(home, ".cargo", "bin"),
-		filepath.Join(home, ".local", "bin"),
-		filepath.Join(home, ".local", "go", "bin"),
-		filepath.Join(home, "miniconda3", "bin"),
-		filepath.Join(home, "miniconda3", "condabin"),
-		filepath.Join(home, ".fnm"),
-		filepath.Join(home, ".local", "share", "fnm"),
-		filepath.Join(home, "Library", "Application Support", "fnm"),
-		"/usr/local/go/bin",
-	}
-
-	for _, dir := range fallbacks {
+	for _, dir := range fallbackDirs {
 		binPath := filepath.Join(dir, name)
 		if runtime.GOOS == "windows" {
 			binPath += ".exe"
@@ -190,8 +177,6 @@ func cleanVersionString(name string, raw string) string {
 	return firstLine
 }
 
-
-
 // DetectTool 检测单个工具
 func DetectTool(name string, versionFlag string) *Tool {
 	path, err := lookPathWithFallback(name)
@@ -234,16 +219,18 @@ func DetectLanguages() map[string]*Tool {
 // DetectTools 检测常见开发工具
 func DetectTools() map[string]*Tool {
 	tools := map[string]*Tool{
-		"git":      DetectTool("git", "--version"),
-		"docker":   DetectTool("docker", "--version"),
-		"code":     DetectTool("code", "--version"),
-		"vim":      DetectTool("vim", "--version"),
-		"curl":     DetectTool("curl", "--version"),
-		"wget":     DetectTool("wget", "--version"),
-		"conda":    DetectTool("conda", "--version"),
-		"kubectl":  DetectTool("kubectl", "version --client"),
-		"minikube": DetectTool("minikube", "version"),
-		"espidf":   DetectTool("eim", "--version"),
+		"git":        DetectTool("git", "--version"),
+		"docker":     DetectTool("docker", "--version"),
+		"code":       DetectTool("code", "--version"),
+		"vim":        DetectTool("vim", "--version"),
+		"curl":       DetectTool("curl", "--version"),
+		"wget":       DetectTool("wget", "--version"),
+		"conda":      DetectTool("conda", "--version"),
+		"kubectl":    DetectTool("kubectl", "version --client"),
+		"minikube":   DetectTool("minikube", "version"),
+		"espidf":     DetectTool("eim", "--version"),
+		"android":    DetectTool("adb", "--version"),
+		"sdkmanager": DetectTool("sdkmanager", "--version"),
 	}
 
 	return tools
