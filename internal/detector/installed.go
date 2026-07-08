@@ -18,35 +18,16 @@ type Tool struct {
 
 // lookPathWithFallback 尝试在系统的 PATH 中查找命令，如果找不到，则在常见的默认安装路径中查找
 func lookPathWithFallback(name string) (string, error) {
+	InitDetectionEnvironment()
+
 	path, err := exec.LookPath(name)
 	if err == nil {
 		return path, nil
 	}
 
-	home, errDir := os.UserHomeDir()
-	if errDir != nil {
-		return "", err
-	}
+	fallbackDirs := toolSearchDirs()
 
-	fallbacks := []string{
-		filepath.Join(home, ".cargo", "bin"),
-		filepath.Join(home, ".local", "bin"),
-		filepath.Join(home, ".local", "go", "bin"),
-		filepath.Join(home, "miniconda3", "bin"),
-		filepath.Join(home, "miniconda3", "condabin"),
-		filepath.Join(home, ".fnm"),
-		filepath.Join(home, ".local", "share", "fnm"),
-		filepath.Join(home, "Library", "Application Support", "fnm"),
-		"/usr/local/go/bin",
-		// Android SDK 常见安装路径（macOS / Linux / 备用）
-		filepath.Join(home, "Library", "Android", "sdk", "platform-tools"),
-		filepath.Join(home, "Library", "Android", "sdk", "cmdline-tools", "latest", "bin"),
-		filepath.Join(home, "Android", "Sdk", "platform-tools"),
-		filepath.Join(home, "Android", "Sdk", "cmdline-tools", "latest", "bin"),
-		filepath.Join(home, "Android", "platform-tools"),
-	}
-
-	for _, dir := range fallbacks {
+	for _, dir := range fallbackDirs {
 		binPath := filepath.Join(dir, name)
 		if runtime.GOOS == "windows" {
 			binPath += ".exe"

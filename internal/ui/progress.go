@@ -84,6 +84,9 @@ func NewSpinner(message string) *Spinner {
 
 // Start 启动旋转加载器
 func (s *Spinner) Start() {
+	if IsSilentMode() {
+		return
+	}
 	s.running = true
 	go func() {
 		for s.running {
@@ -96,6 +99,9 @@ func (s *Spinner) Start() {
 
 // Stop 停止旋转加载器
 func (s *Spinner) Stop() {
+	if IsSilentMode() {
+		return
+	}
 	s.running = false
 	time.Sleep(150 * time.Millisecond) // 等待最后一帧显示
 	fmt.Print("\r" + strings.Repeat(" ", 50) + "\r") // 清除行

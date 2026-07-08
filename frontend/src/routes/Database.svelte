@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { GetDatabases, StartDatabase, StopDatabase, RemoveDatabase } from '../../wailsjs/go/main/App';
+  import ProgressBar from '../lib/components/ProgressBar.svelte';
+  import LoadingSkeleton from '../lib/components/LoadingSkeleton.svelte';
+  import { subscribeTaskProgress } from '../lib/taskProgress';
 
   interface Database {
     name: string;
@@ -9,20 +12,52 @@
     status: string;
   }
 
+  interface ProgressInfo {
+    percent: number;
+    stage: string;
+    message: string;
+    status: 'running' | 'success' | 'error';
+  }
+
   let databases: Database[] = [];
   let loading = false;
   let showStartModal = false;
   let selectedDb = { name: '', version: '' };
+  let progressMap: Record<string, ProgressInfo> = {};
+  const progressTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+  let unsubProgress: (() => void) | null = null;
+
+  const SUCCESS_HOLD_MS = 1200;
+  const ERROR_HOLD_MS = 3000;
 
   const availableDatabases = [
-    { name: 'postgres', displayName: 'PostgreSQL', defaultVersion: '16', icon: 'database' },
-    { name: 'redis', displayName: 'Redis', defaultVersion: '7', icon: 'database' },
-    { name: 'mysql', displayName: 'MySQL', defaultVersion: '8.0', icon: 'database' },
-    { name: 'mongodb', displayName: 'MongoDB', defaultVersion: '6.0', icon: 'database' }
+    { name: 'postgres', displayName: 'PostgreSQL', defaultVersion: '16', description: '强大的开源关系型数据库' },
+    { name: 'redis', displayName: 'Redis', defaultVersion: '7', description: '高性能内存键值数据库' },
+    { name: 'mysql', displayName: 'MySQL', defaultVersion: '8.0', description: '最流行的开源关系型数据库' },
+    { name: 'mongodb', displayName: 'MongoDB', defaultVersion: '6.0', description: '文档型 NoSQL 数据库' },
+    { name: 'mariadb', displayName: 'MariaDB', defaultVersion: '10.11', description: 'MySQL 兼容的开源分支' },
+    { name: 'clickhouse', displayName: 'ClickHouse', defaultVersion: '23.12', description: '列式 OLAP 数据库' }
   ];
 
   onMount(async () => {
+    unsubProgress = subscribeTaskProgress((evt) => {
+      const id = evt.taskId;
+      if (!id) return;
+      const status: ProgressInfo['status'] =
+        evt.stage === 'error' ? 'error' :
+        evt.stage === 'done' ? 'success' : 'running';
+      setProgress(id, {
+        percent: evt.percent,
+        stage: evt.stage,
+        message: evt.message || '',
+        status
+      });
+    });
     await loadDatabases();
+  });
+
+  onDestroy(() => {
+    unsubProgress?.();
   });
 
   async function loadDatabases() {
@@ -40,47 +75,67 @@
     showStartModal = true;
   }
 
+  function clearProgressLater(name: string, delay: number) {
+    if (progressTimers[name]) {
+      clearTimeout(progressTimers[name]);
+    }
+    progressTimers[name] = setTimeout(() => {
+      const next = { ...progressMap };
+      delete next[name];
+      progressMap = next;
+      delete progressTimers[name];
+    }, delay);
+  }
+
+  function setProgress(name: string, info: ProgressInfo) {
+    progressMap = { ...progressMap, [name]: info };
+  }
+
   async function startDatabase() {
     if (!selectedDb.name || !selectedDb.version) return;
 
-    loading = true;
+    const name = selectedDb.name;
     showStartModal = false;
+    setProgress(name, { percent: 0, stage: 'preparing', message: '准备启动...', status: 'running' });
     try {
-      await StartDatabase(selectedDb.name, selectedDb.version);
+      await StartDatabase(name, selectedDb.version);
       await loadDatabases();
-      alert(`${selectedDb.name} 启动成功！`);
+      setProgress(name, { percent: 100, stage: 'done', message: '启动完成', status: 'success' });
+      clearProgressLater(name, SUCCESS_HOLD_MS);
     } catch (err) {
-      alert(`启动失败: ${err}`);
+      setProgress(name, { percent: 100, stage: 'error', message: String(err), status: 'error' });
+      clearProgressLater(name, ERROR_HOLD_MS);
     }
-    loading = false;
   }
 
   async function stopDatabase(containerName: string) {
     if (!confirm(`确定要停止容器 ${containerName} 吗？`)) return;
 
-    loading = true;
+    setProgress(containerName, { percent: 0, stage: 'notifying', message: '准备停止...', status: 'running' });
     try {
       await StopDatabase(containerName);
       await loadDatabases();
-      alert('容器已停止');
+      setProgress(containerName, { percent: 100, stage: 'done', message: '已停止', status: 'success' });
+      clearProgressLater(containerName, SUCCESS_HOLD_MS);
     } catch (err) {
-      alert(`停止失败: ${err}`);
+      setProgress(containerName, { percent: 100, stage: 'error', message: String(err), status: 'error' });
+      clearProgressLater(containerName, ERROR_HOLD_MS);
     }
-    loading = false;
   }
 
   async function removeDatabase(containerName: string) {
     if (!confirm(`确定要删除容器 ${containerName} 吗？\n\n数据将会丢失！`)) return;
 
-    loading = true;
+    setProgress(containerName, { percent: 0, stage: 'stopping', message: '准备移除...', status: 'running' });
     try {
       await RemoveDatabase(containerName, true);
       await loadDatabases();
-      alert('容器已删除');
+      setProgress(containerName, { percent: 100, stage: 'done', message: '移除完成', status: 'success' });
+      clearProgressLater(containerName, SUCCESS_HOLD_MS);
     } catch (err) {
-      alert(`删除失败: ${err}`);
+      setProgress(containerName, { percent: 100, stage: 'error', message: String(err), status: 'error' });
+      clearProgressLater(containerName, ERROR_HOLD_MS);
     }
-    loading = false;
   }
 </script>
 
@@ -95,7 +150,9 @@
     </button>
   </div>
 
-  {#if databases.length === 0}
+  {#if loading && databases.length === 0}
+    <LoadingSkeleton count={4} columns="repeat(auto-fill, minmax(280px, 1fr))" />
+  {:else if databases.length === 0}
     <div class="empty-state">
       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#86868b" stroke-width="2">
         <ellipse cx="12" cy="5" rx="9" ry="3"/>
@@ -146,14 +203,24 @@
               <td>
                 <div class="actions">
                   {#if db.status === 'running'}
-                    <button class="btn-small btn-secondary" on:click={() => stopDatabase(db.name)}>
+                    <button class="btn-small btn-secondary" on:click={() => stopDatabase(db.name)} disabled={!!progressMap[db.name]}>
                       停止
                     </button>
                   {/if}
-                  <button class="btn-small btn-danger" on:click={() => removeDatabase(db.name)}>
+                  <button class="btn-small btn-danger" on:click={() => removeDatabase(db.name)} disabled={!!progressMap[db.name]}>
                     删除
                   </button>
                 </div>
+                {#if progressMap[db.name]}
+                  <div class="row-progress">
+                    <ProgressBar
+                      percent={progressMap[db.name].percent}
+                      stage={progressMap[db.name].stage}
+                      message={progressMap[db.name].message}
+                      status={progressMap[db.name].status}
+                    />
+                  </div>
+                {/if}
               </td>
             </tr>
           {/each}
@@ -170,6 +237,22 @@
         启动新容器
       </button>
     </div>
+
+    {#if Object.keys(progressMap).filter(n => !databases.some(d => d.name === n)).length > 0}
+      <div class="operation-status">
+        <div class="operation-status-title">操作状态</div>
+        <div class="operation-status-list">
+          {#each Object.keys(progressMap).filter(n => !databases.some(d => d.name === n)) as name (name)}
+            <ProgressBar
+              percent={progressMap[name].percent}
+              stage={progressMap[name].stage}
+              message={progressMap[name].message}
+              status={progressMap[name].status}
+            />
+          {/each}
+        </div>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -327,6 +410,34 @@
 
   .add-container {
     margin-top: 16px;
+  }
+
+  .row-progress {
+    margin-top: 8px;
+    min-width: 220px;
+  }
+
+  .operation-status {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: #f5f5f5;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+  }
+
+  .operation-status-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6e6e73;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+
+  .operation-status-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
   button {

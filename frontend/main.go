@@ -13,10 +13,10 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
+	"github.com/fusheng/envkit/internal/appapi"
 	"github.com/fusheng/envkit/internal/detector"
-	"github.com/fusheng/envkit/internal/docker"
-	"github.com/fusheng/envkit/internal/installer"
 	"github.com/fusheng/envkit/internal/mirror"
+	"github.com/fusheng/envkit/internal/progress"
 )
 
 //go:embed all:../../frontend/dist
@@ -32,15 +32,10 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	detector.InitDetectionEnvironment()
 }
 
-type Language struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName"`
-	Version     string `json:"version"`
-	Installed   bool   `json:"installed"`
-	Mirror      string `json:"mirror"`
-}
+type Language = appapi.Language
 
 type Tool struct {
 	Name        string `json:"name"`
@@ -78,40 +73,19 @@ func (a *App) GetSystemInfo() SystemInfo {
 }
 
 func (a *App) GetLanguages() []Language {
-	detected := detector.DetectLanguages()
+	return appapi.GetLanguages()
+}
 
-	languages := []Language{
-		{Name: "node", DisplayName: "Node.js", Version: "20.11.1", Installed: false},
-		{Name: "python", DisplayName: "Python", Version: "3.10.11", Installed: false},
-		{Name: "go", DisplayName: "Go", Version: "1.22.0", Installed: false},
-		{Name: "rust", DisplayName: "Rust", Version: "stable", Installed: false},
-		{Name: "java", DisplayName: "Java", Version: "21", Installed: false},
-		{Name: "bun", DisplayName: "Bun", Version: "latest", Installed: false},
-	}
-
-	for i := range languages {
-		key := languages[i].Name
-		if key == "rust" {
-			key = "rustc"
-		}
-		if tool := detected[key]; tool != nil && tool.Installed {
-			languages[i].Installed = true
-			languages[i].Version = tool.Version
-		}
-	}
-	return languages
+func (a *App) SetLanguageMirror(language string, mirrorName string) error {
+	return appapi.SetLanguageMirror(language, mirrorName)
 }
 
 func (a *App) InstallLanguage(name string, version string) error {
-	langInstaller := installer.GetInstaller(name)
-	if langInstaller == nil {
-		return fmt.Errorf("不支持的语言: %s", name)
-	}
-	return langInstaller.Install(version)
+	return appapi.InstallLanguageWithProgress(name, version, progress.NewWailsReporter(a.ctx, "task-progress", name))
 }
 
 func (a *App) UninstallLanguage(name string) error {
-	return installer.UninstallComponent(name)
+	return appapi.UninstallLanguageWithProgress(name, progress.NewWailsReporter(a.ctx, "task-progress", name))
 }
 
 func (a *App) GetTools() []Tool {
@@ -145,27 +119,19 @@ func (a *App) GetTools() []Tool {
 }
 
 func (a *App) InstallTool(name string) error {
-	toolInstaller := installer.GetToolInstaller(name)
-	if toolInstaller == nil {
-		return fmt.Errorf("不支持的工具: %s", name)
-	}
-	return toolInstaller.Install()
+	return appapi.InstallToolWithProgress(name, progress.NewWailsReporter(a.ctx, "task-progress", name))
 }
 
 func (a *App) UninstallTool(name string) error {
-	return installer.UninstallComponent(name)
+	return appapi.UninstallToolWithProgress(name, progress.NewWailsReporter(a.ctx, "task-progress", name))
 }
 
 func (a *App) InstallAndroid() error {
-	toolInstaller := installer.GetToolInstaller("android")
-	if toolInstaller == nil {
-		return fmt.Errorf("不支持的工具: android")
-	}
-	return toolInstaller.Install()
+	return appapi.InstallAndroidWithProgress(progress.NewWailsReporter(a.ctx, "task-progress", "android"))
 }
 
 func (a *App) UninstallAndroid() error {
-	return installer.UninstallComponent("android")
+	return appapi.UninstallAndroidWithProgress(progress.NewWailsReporter(a.ctx, "task-progress", "android"))
 }
 
 func (a *App) GetAndroidInfo() AndroidInfo {
@@ -210,15 +176,11 @@ func (a *App) GetAndroidInfo() AndroidInfo {
 }
 
 func (a *App) ConfigureAndroidMirror(mirrorName string) error {
-	registry := mirror.NewRegistry()
-	configurator := mirror.NewAndroidConfigurator(registry)
-	return configurator.Configure(mirrorName)
+	return appapi.ConfigureAndroidMirrorWithProgress(mirrorName, progress.NewWailsReporter(a.ctx, "task-progress", "android-mirror"))
 }
 
 func (a *App) ConfigureGradleMirror(mirrorName string) error {
-	registry := mirror.NewRegistry()
-	configurator := mirror.NewGradleConfigurator(registry)
-	return configurator.Configure(mirrorName)
+	return appapi.ConfigureGradleMirrorWithProgress(mirrorName, progress.NewWailsReporter(a.ctx, "task-progress", "gradle-mirror"))
 }
 
 func (a *App) GetAndroidMirrors() []MirrorInfo {

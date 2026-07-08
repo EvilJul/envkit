@@ -15,25 +15,21 @@ const (
 	ColorBold   = "\033[1m"
 )
 
-// 彩色输出函数
+// 彩色输出函数（委托给当前 Renderer）
 func Success(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("%s✓ %s%s\n", ColorGreen, msg, ColorReset)
+	defaultRenderer.Success(format, args...)
 }
 
 func Error(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("%s✗ %s%s\n", ColorRed, msg, ColorReset)
+	defaultRenderer.Error(format, args...)
 }
 
 func Warning(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("%s⚠ %s%s\n", ColorYellow, msg, ColorReset)
+	defaultRenderer.Warning(format, args...)
 }
 
 func Info(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("%sℹ %s%s\n", ColorBlue, msg, ColorReset)
+	defaultRenderer.Info(format, args...)
 }
 
 func Bold(text string) string {

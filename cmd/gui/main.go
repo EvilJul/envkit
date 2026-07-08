@@ -10,6 +10,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
+	"github.com/fusheng/envkit/internal/appapi"
 	"github.com/fusheng/envkit/internal/detector"
 	"github.com/fusheng/envkit/internal/installer"
 	"github.com/fusheng/envkit/internal/docker"
@@ -29,16 +30,11 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	detector.InitDetectionEnvironment()
 }
 
 // Language 语言环境信息
-type Language struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName"`
-	Version     string `json:"version"`
-	Installed   bool   `json:"installed"`
-	Mirror      string `json:"mirror"`
-}
+type Language = appapi.Language
 
 // Tool 工具信息
 type Tool struct {
@@ -75,31 +71,11 @@ func (a *App) GetSystemInfo() SystemInfo {
 
 // GetLanguages 获取所有语言环境
 func (a *App) GetLanguages() []Language {
-	detected := detector.DetectLanguages()
+	return appapi.GetLanguages()
+}
 
-	languages := []Language{
-		{Name: "node", DisplayName: "Node.js", Version: "20.11.1", Installed: false},
-		{Name: "python", DisplayName: "Python", Version: "3.10.11", Installed: false},
-		{Name: "go", DisplayName: "Go", Version: "1.22.0", Installed: false},
-		{Name: "rust", DisplayName: "Rust", Version: "stable", Installed: false},
-		{Name: "java", DisplayName: "Java", Version: "21", Installed: false},
-		{Name: "bun", DisplayName: "Bun", Version: "latest", Installed: false},
-	}
-
-	// 填充实际状态
-	for i := range languages {
-		key := languages[i].Name
-		if key == "rust" {
-			key = "rustc"
-		}
-
-		if tool := detected[key]; tool != nil && tool.Installed {
-			languages[i].Installed = true
-			languages[i].Version = tool.Version
-		}
-	}
-
-	return languages
+func (a *App) SetLanguageMirror(language string, mirrorName string) error {
+	return appapi.SetLanguageMirror(language, mirrorName)
 }
 
 // InstallLanguage 安装语言环境
