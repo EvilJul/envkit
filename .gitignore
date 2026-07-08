@@ -72,3 +72,9 @@ build/bin/
 
 # Claude Code
 .claude/
+
+# Tool-generated metadata (CodeGraph, Crush, OpenCode, OpenSpec)
+.codegraph/
+.crush/
+.opencode/
+openspec/
