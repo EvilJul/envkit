@@ -9,7 +9,7 @@ import (
 
 func TestDetectTableNoMojibakeWithPlainStatus(t *testing.T) {
 	report := service.DetectEnvironment()
-	tbl := buildDetectTable(report, 100)
+	tbl := buildDetectTableFromReport(report, 100)
 	view := tbl.View()
 	if strings.Contains(view, "\ufffd") {
 		t.Fatalf("table contains replacement char: %q", view)
