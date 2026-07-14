@@ -23,6 +23,26 @@ func AddDirToPath(dir string) {
 	os.Setenv("PATH", dir+string(os.PathListSeparator)+path)
 }
 
+// refreshProcessPathFromRegistry 从 Windows 用户与系统 PATH 合并刷新当前进程 PATH。
+// winget 安装后新路径往往只写入注册表，当前进程不会自动可见。
+func refreshProcessPathFromRegistry() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	// PowerShell: 合并 Machine + User Path
+	ps := `[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')`
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", ps)
+	out, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	newPath := strings.TrimSpace(string(out))
+	if newPath == "" {
+		return
+	}
+	os.Setenv("PATH", newPath)
+}
+
 // PersistPathEnv 将环境变量修改写入 shell 配置文件（Unix）或系统环境变量（Windows）
 func PersistPathEnv(dir string) error {
 	return PersistPathEnvTagged(dir, "envkit")
@@ -101,18 +121,94 @@ func PersistPathEnvTagged(dir, tag string) error {
 	return nil
 }
 
-// persistPathEnvWindows Windows 平台持久化 PATH
+// PersistUserEnvVar 将环境变量持久化到 Windows 用户级环境（User）。
+// 始终写入，不因当前进程已 Setenv 而跳过。优先 PowerShell Environment API，失败时回退 setx。
+func PersistUserEnvVar(name, value string) error {
+	if runtime.GOOS != "windows" {
+		return fmt.Errorf("PersistUserEnvVar 仅支持 Windows")
+	}
+	if err := userEnvSetWindows(name, value); err != nil {
+		// 回退 setx
+		if err2 := exec.Command("setx", name, value).Run(); err2 != nil {
+			return fmt.Errorf("持久化用户环境变量 %s 失败: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// userEnvGetWindows 读取 Windows 用户级环境变量（HKCU）
+func userEnvGetWindows(key string) (string, error) {
+	escapedKey := strings.ReplaceAll(key, "'", "''")
+	script := fmt.Sprintf("[Environment]::GetEnvironmentVariable('%s','User')", escapedKey)
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("读取用户环境变量 %s 失败: %w (%s)", key, err, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimRight(string(out), "\r\n"), nil
+}
+
+// userEnvSetWindows 写入 Windows 用户级环境变量（HKCU）
+func userEnvSetWindows(key, value string) error {
+	escapedKey := strings.ReplaceAll(key, "'", "''")
+	escapedValue := strings.ReplaceAll(value, "'", "''")
+	script := fmt.Sprintf("[Environment]::SetEnvironmentVariable('%s', '%s', 'User')", escapedKey, escapedValue)
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("写入用户环境变量 %s 失败: %w (%s)", key, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// getUserPathWindows 读取 Windows 用户级 Path（不含 Machine / 进程合并 PATH）
+func getUserPathWindows() (string, error) {
+	return userEnvGetWindows("Path")
+}
+
+// setUserPathWindows 写入 Windows 用户级 Path
+func setUserPathWindows(path string) error {
+	return userEnvSetWindows("Path", path)
+}
+
+// pathListContainsWindows 判断 dir 是否已在以 ; 分隔的 Path 中（大小写不敏感）
+func pathListContainsWindows(pathList, dir string) bool {
+	dir = strings.TrimRight(strings.TrimSpace(dir), `\`)
+	if dir == "" {
+		return false
+	}
+	for _, p := range strings.Split(pathList, ";") {
+		p = strings.TrimRight(strings.TrimSpace(p), `\`)
+		if p != "" && strings.EqualFold(p, dir) {
+			return true
+		}
+	}
+	return false
+}
+
+// persistPathEnvWindows 将 dir 追加到 Windows 用户级 Path（不使用 setx / 不全量写进程 PATH）
 func persistPathEnvWindows(dir string) error {
-	// 使用 setx 命令修改用户环境变量
-	currentPath := os.Getenv("PATH")
-	if strings.Contains(currentPath, dir) {
-		return nil // 已存在
+	// 当前进程立即生效
+	AddDirToPath(dir)
+
+	userPath, err := getUserPathWindows()
+	if err != nil {
+		return err
 	}
 
-	newPath := dir + ";" + currentPath
-	cmd := exec.Command("setx", "PATH", newPath)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("Windows PATH 持久化失败: %w", err)
+	if pathListContainsWindows(userPath, dir) {
+		return nil
+	}
+
+	newPath := dir
+	if trimmed := strings.TrimSpace(userPath); trimmed != "" {
+		// 去掉尾部分隔符再追加，避免 ";;"
+		trimmed = strings.TrimRight(trimmed, ";")
+		newPath = trimmed + ";" + dir
+	}
+
+	if err := setUserPathWindows(newPath); err != nil {
+		return err
 	}
 
 	ui.Info("PATH 已更新，请重启终端使其生效")
@@ -197,13 +293,20 @@ func locateAndAddFnmToPath() error {
 		filepath.Join(home, "Library", "Application Support", "fnm"),
 	}
 
+	names := []string{"fnm"}
+	if runtime.GOOS == "windows" {
+		names = append(names, "fnm.exe")
+	}
+
 	for _, dir := range dirs {
-		fnmPath := filepath.Join(dir, "fnm")
-		if _, err := os.Stat(fnmPath); err == nil {
-			AddDirToPath(dir)
-			_ = PersistPathEnv(dir)
-			persistFnmShellIntegration(dir)
-			return nil
+		for _, name := range names {
+			fnmPath := filepath.Join(dir, name)
+			if _, err := os.Stat(fnmPath); err == nil {
+				AddDirToPath(dir)
+				_ = PersistPathEnv(dir)
+				persistFnmShellIntegration(dir)
+				return nil
+			}
 		}
 	}
 
@@ -289,12 +392,19 @@ func locateAndAddUvToPath() error {
 		filepath.Join(home, ".cargo", "bin"),
 	}
 
+	names := []string{"uv"}
+	if runtime.GOOS == "windows" {
+		names = append(names, "uv.exe")
+	}
+
 	for _, dir := range dirs {
-		uvPath := filepath.Join(dir, "uv")
-		if _, err := os.Stat(uvPath); err == nil {
-			AddDirToPath(dir)
-			_ = PersistPathEnv(dir)
-			return nil
+		for _, name := range names {
+			uvPath := filepath.Join(dir, name)
+			if _, err := os.Stat(uvPath); err == nil {
+				AddDirToPath(dir)
+				_ = PersistPathEnv(dir)
+				return nil
+			}
 		}
 	}
 
@@ -336,11 +446,17 @@ func locateAndAddRustupToPath() error {
 	}
 
 	dir := filepath.Join(home, ".cargo", "bin")
-	rustupPath := filepath.Join(dir, "rustup")
-	if _, err := os.Stat(rustupPath); err == nil {
-		AddDirToPath(dir)
-		_ = PersistPathEnv(dir)
-		return nil
+	names := []string{"rustup"}
+	if runtime.GOOS == "windows" {
+		names = append(names, "rustup.exe")
+	}
+	for _, name := range names {
+		rustupPath := filepath.Join(dir, name)
+		if _, err := os.Stat(rustupPath); err == nil {
+			AddDirToPath(dir)
+			_ = PersistPathEnv(dir)
+			return nil
+		}
 	}
 
 	return fmt.Errorf("未找到 rustup 二进制文件，请确认安装成功并已加入 PATH")

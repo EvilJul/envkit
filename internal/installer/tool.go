@@ -359,7 +359,14 @@ func installWithApt(packageName string) error {
 	return runCommand("sudo", "apt-get", "install", "-y", packageName)
 }
 
+// installWithWinget 通过 winget 静默安装指定包（最新版）。
+// 安装成功后会尝试从 User+Machine PATH 刷新当前进程 PATH；是否安装成功由调用方 IsInstalled 判断。
 func installWithWinget(packageId string) error {
+	return installWithWingetVersion(packageId, "")
+}
+
+// installWithWingetVersion 通过 winget 静默安装指定包，version 非空且非 "latest" 时附加 --version。
+func installWithWingetVersion(packageId, version string) error {
 	if !commandExists("winget") {
 		return fmt.Errorf("winget 未安装。请从 Microsoft Store 安装 App Installer")
 	}
@@ -370,11 +377,34 @@ func installWithWinget(packageId string) error {
 	if err != nil {
 		return fmt.Errorf("无法获取 winget 版本: %w", err)
 	}
+	ui.Info("检测到 winget 版本: %s", strings.TrimSpace(string(out)))
 
-	version := strings.TrimSpace(string(out))
-	ui.Info("检测到 winget 版本: %s", version)
+	args := []string{
+		"install",
+		"--id", packageId,
+		"-e",
+		"--silent",
+		"--accept-package-agreements",
+		"--accept-source-agreements",
+		"--disable-interactivity",
+	}
+	if ver := strings.TrimSpace(version); ver != "" && !strings.EqualFold(ver, "latest") {
+		args = append(args, "--version", ver)
+	}
 
-	return runCommand("winget", "install", packageId)
+	if err := runCommand("winget", args...); err != nil {
+		return err
+	}
+
+	// winget 安装后新二进制可能仅在注册表 PATH 中，刷新当前进程 PATH
+	refreshProcessPathFromRegistry()
+	return nil
+}
+
+// runWindowsScript 通过 cmd /C 执行 .bat/.cmd 等脚本（Windows 上直接 exec .bat 常失败）。
+func runWindowsScript(script string, args ...string) error {
+	cmdArgs := append([]string{"/C", script}, args...)
+	return runCommand("cmd", cmdArgs...)
 }
 
 // GetToolInstaller 获取工具安装器
@@ -428,19 +458,42 @@ func (m *MinicondaInstaller) Install() error {
 	// 3. 配置环境变量
 	binDir := filepath.Join(prefix, "bin")
 	if runtime.GOOS == "windows" {
-		binDir = filepath.Join(prefix, "Scripts")
+		// Windows Miniconda: Scripts + condabin 均需在 PATH（目录存在时才写入）
+		scriptsDir := filepath.Join(prefix, "Scripts")
+		condabinDir := filepath.Join(prefix, "condabin")
+		if st, err := os.Stat(scriptsDir); err == nil && st.IsDir() {
+			AddDirToPath(scriptsDir)
+			_ = PersistPathEnv(scriptsDir)
+		}
+		if st, err := os.Stat(condabinDir); err == nil && st.IsDir() {
+			AddDirToPath(condabinDir)
+			_ = PersistPathEnv(condabinDir)
+		}
+		// winget 安装可能写到其它位置，再刷一次注册表 PATH
+		refreshProcessPathFromRegistry()
+		binDir = scriptsDir
+	} else {
+		AddDirToPath(binDir)
+		_ = PersistPathEnv(binDir)
 	}
-	AddDirToPath(binDir)
-	_ = PersistPathEnv(binDir)
 
 	// 运行 conda init
-	condaBin := filepath.Join(binDir, "conda")
 	if runtime.GOOS == "windows" {
-		condaBin = filepath.Join(prefix, "condabin", "conda.bat")
+		condaBat := filepath.Join(prefix, "condabin", "conda.bat")
+		if _, err := os.Stat(condaBat); err == nil {
+			_ = runWindowsScript(condaBat, "init", "--all")
+		} else if commandExists("conda") {
+			_ = runWindowsScript("conda", "init", "--all")
+		}
+	} else {
+		condaBin := filepath.Join(binDir, "conda")
+		initCmd := exec.Command(condaBin, "init", "--all")
+		_ = initCmd.Run()
 	}
 
-	initCmd := exec.Command(condaBin, "init", "--all")
-	_ = initCmd.Run()
+	if !m.IsInstalled() {
+		return fmt.Errorf("Miniconda 安装完成但未检测到 conda 命令（请检查 PATH 或重开终端）")
+	}
 
 	_ = RecordInstallation("miniconda", "tool", "latest", []string{"~/miniconda3", "~/.condarc"}, []string{"# >>> conda initialize >>>", "# added by envkit"})
 
@@ -469,6 +522,19 @@ func (m *MinicondaInstaller) installMiniconda(prefix string) error {
 		return m.installUnix(downloadURL, prefix)
 
 	case "windows":
+		if arch == "arm64" {
+			// 优先 arm64 安装包；若镜像无此包再回退 x86_64 或 winget
+			downloadURL = "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Windows-arm64.exe"
+			if err := m.installWindows(downloadURL, prefix); err == nil {
+				return nil
+			}
+			ui.Warning("arm64 Miniconda 安装包失败，尝试 winget...")
+			if err := installWithWinget("Anaconda.Miniconda3"); err == nil {
+				refreshProcessPathFromRegistry()
+				return nil
+			}
+			ui.Warning("winget 安装 Miniconda 失败，回退 x86_64 安装包...")
+		}
 		downloadURL = "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Windows-x86_64.exe"
 		return m.installWindows(downloadURL, prefix)
 
@@ -766,7 +832,7 @@ func (e *EspIdfInstaller) Install() error {
 	case "linux":
 		err = e.installOnLinux()
 	case "windows":
-		err = exec.Command("winget", "install", "Espressif.EIM-CLI").Run()
+		err = installWithWinget("Espressif.EIM-CLI")
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}

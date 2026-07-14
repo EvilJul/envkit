@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -290,7 +291,11 @@ func (m *installWizard) View() string {
 				msg += "\n  • " + c
 			}
 		}
-		msg += "\n\n" + mutedStyle.Render("若终端找不到命令，请 source ~/.bashrc 或重开终端")
+		if runtime.GOOS == "windows" {
+			msg += "\n\n" + mutedStyle.Render("请重新打开终端使 PATH 生效")
+		} else {
+			msg += "\n\n" + mutedStyle.Render("若终端找不到命令，请 source ~/.bashrc 或重开终端")
+		}
 		return renderTitle("安装结果", "") + "\n\n" +
 			boxStyle.Render(msg) + "\n\n" +
 			renderHelp("Enter 返回")

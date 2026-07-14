@@ -76,6 +76,42 @@ func toolSearchDirs() []string {
 		filepath.Join(home, "Android", "platform-tools"),
 	}
 
+	if runtime.GOOS == "windows" {
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		userProfile := os.Getenv("USERPROFILE")
+		if userProfile == "" {
+			userProfile = home
+		}
+		programFiles := os.Getenv("ProgramFiles")
+		if programFiles == "" {
+			programFiles = `C:\Program Files`
+		}
+
+		dirs = append(dirs,
+			filepath.Join(localAppData, "Android", "Sdk", "platform-tools"),
+			filepath.Join(localAppData, "Android", "Sdk", "cmdline-tools", "latest", "bin"),
+			filepath.Join(userProfile, "miniconda3", "Scripts"),
+			filepath.Join(userProfile, "miniconda3", "condabin"),
+			filepath.Join(home, "miniconda3", "Scripts"),
+			filepath.Join(programFiles, "Go", "bin"),
+			filepath.Join(localAppData, "Programs", "Python"),
+		)
+
+		// 官方 Python 安装器: %LOCALAPPDATA%\Programs\Python\Python3x{,\Scripts}
+		pythonRoot := filepath.Join(localAppData, "Programs", "Python")
+		if entries, err := os.ReadDir(pythonRoot); err == nil {
+			for _, e := range entries {
+				if e.IsDir() {
+					base := filepath.Join(pythonRoot, e.Name())
+					dirs = append(dirs, base, filepath.Join(base, "Scripts"))
+				}
+			}
+		}
+	}
+
 	nvmRoot := filepath.Join(home, ".nvm", "versions", "node")
 	if entries, err := os.ReadDir(nvmRoot); err == nil {
 		for _, e := range entries {

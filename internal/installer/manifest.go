@@ -94,7 +94,11 @@ func RecordInstallation(name string, itemType string, version string, paths []st
 	for _, p := range paths {
 		p = filepath.FromSlash(p)
 		if strings.HasPrefix(p, "~") {
-			p = filepath.Join(home, p[1:])
+			// 不能用 filepath.Join(home, p[1:])：Windows 上 "~/foo" 的 p[1:] 是 "/foo"，Join 会当成绝对路径丢弃 home
+			rel := strings.TrimPrefix(p, "~")
+			rel = strings.TrimPrefix(rel, "/")
+			rel = strings.TrimPrefix(rel, `\`)
+			p = filepath.Join(home, filepath.FromSlash(rel))
 		}
 		resolvedPaths = append(resolvedPaths, filepath.Clean(p))
 	}

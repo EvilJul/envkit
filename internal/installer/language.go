@@ -95,11 +95,36 @@ func (n *NodeInstaller) installWithFnm(version string) error {
 }
 
 func (n *NodeInstaller) installWithWinget(version string) error {
-	if !commandExists("winget") {
-		return fmt.Errorf("请先安装 winget")
-	}
+	// winget 包 ID 映射：优先按主版本号选 OpenJS.NodeJS.XX（如 20 → OpenJS.NodeJS.20）。
+	// 完整 semver（如 20.11.0）无法可靠映射到 winget --version，主版本包 ID 已足够；
+	// 未识别版本时安装 OpenJS.NodeJS（当前最新）。
+	packageId := nodeWingetPackageID(version)
+	return installWithWinget(packageId)
+}
 
-	return runCommand("winget", "install", "OpenJS.NodeJS")
+// nodeWingetPackageID 将请求版本映射到 winget 包 ID。
+func nodeWingetPackageID(version string) string {
+	v := strings.TrimSpace(version)
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "V")
+	if v == "" || strings.EqualFold(v, "latest") || strings.EqualFold(v, "lts") {
+		if strings.EqualFold(v, "lts") {
+			return "OpenJS.NodeJS.LTS"
+		}
+		return "OpenJS.NodeJS"
+	}
+	// 取主版本号：20 / 20.11.0 / 22.x → OpenJS.NodeJS.20
+	major := v
+	if i := strings.IndexByte(v, '.'); i > 0 {
+		major = v[:i]
+	}
+	// 仅数字主版本才拼具体包 ID
+	for _, c := range major {
+		if c < '0' || c > '9' {
+			return "OpenJS.NodeJS"
+		}
+	}
+	return "OpenJS.NodeJS." + major
 }
 
 func (n *NodeInstaller) IsInstalled() bool {
@@ -185,11 +210,32 @@ func (p *PythonInstaller) installWithUv(version string) error {
 }
 
 func (p *PythonInstaller) installWithWinget(version string) error {
-	if !commandExists("winget") {
-		return fmt.Errorf("请先安装 winget")
-	}
+	// winget 包 ID 形如 Python.Python.3.10（仅 major.minor，不含 patch）
+	packageId := pythonWingetPackageID(version)
+	return installWithWinget(packageId)
+}
 
-	return runCommand("winget", "install", "Python.Python."+version)
+// pythonWingetPackageID 将 3.10.11 / 3.12 / python3.11 等规范为 Python.Python.X.Y
+func pythonWingetPackageID(version string) string {
+	v := strings.TrimSpace(version)
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "V")
+	v = strings.TrimPrefix(strings.ToLower(v), "python")
+	v = strings.TrimPrefix(v, "-")
+	v = strings.TrimSpace(v)
+	if v == "" || strings.EqualFold(v, "latest") {
+		// 无具体版本时安装 3.12 作为合理默认
+		return "Python.Python.3.12"
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) >= 2 {
+		return "Python.Python." + parts[0] + "." + parts[1]
+	}
+	// 仅主版本（如 "3"）时尝试 3.12
+	if parts[0] == "3" {
+		return "Python.Python.3.12"
+	}
+	return "Python.Python." + parts[0]
 }
 
 func (p *PythonInstaller) IsInstalled() bool {
@@ -341,11 +387,86 @@ func goDownloadURLs(version, goos, arch string) []string {
 }
 
 func (g *GoInstaller) installWithWinget(version string) error {
-	if !commandExists("winget") {
-		return fmt.Errorf("请先安装 winget")
+	// winget 的 GoLang.Go 通常只提供最新稳定版；--version 与用户请求的 patch 可能不匹配。
+	// 先静默安装最新版，失败则回退用户级 zip（类似 Linux 的 ~/.local/go）。
+	err := installWithWinget("GoLang.Go")
+	if err == nil {
+		_ = RecordInstallation("go", "language", version, nil, []string{"# added by envkit"})
+		return nil
+	}
+	ui.Warning("通过 winget 安装 Go 失败 (%v)，正在尝试用户级 zip 安装...", err)
+	return g.installUserLocalWindows(version)
+}
+
+// installUserLocalWindows 将 Go 解压到 %USERPROFILE%\.local\go（无需管理员）
+func (g *GoInstaller) installUserLocalWindows(version string) error {
+	ui.Info("正在下载 Go %s (windows/%s)...", version, runtime.GOARCH)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
 	}
 
-	return runCommand("winget", "install", "GoLang.Go")
+	destDir := filepath.Join(home, ".local")
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return err
+	}
+
+	zipPath := filepath.Join(destDir, "go.zip")
+	name := fmt.Sprintf("go%s.windows-%s.zip", version, runtime.GOARCH)
+	urls := []string{
+		"https://golang.google.cn/dl/" + name,
+		"https://mirrors.aliyun.com/golang/" + name,
+		"https://go.dev/dl/" + name,
+	}
+
+	var downloadErr error
+	for _, downloadURL := range urls {
+		ui.Info("尝试: %s", downloadURL)
+		if err := runCommand("curl", "-fsSL", "--connect-timeout", "30", "--max-time", "600", "-o", zipPath, downloadURL); err != nil {
+			downloadErr = err
+			continue
+		}
+		downloadErr = nil
+		break
+	}
+	if downloadErr != nil {
+		return fmt.Errorf("下载 Go 失败: %w", downloadErr)
+	}
+
+	if st, err := os.Stat(zipPath); err != nil || st.Size() < 1_000_000 {
+		_ = os.Remove(zipPath)
+		return fmt.Errorf("下载的 Go 包无效或过小")
+	}
+
+	ui.Info("正在解压到 %%USERPROFILE%%\\.local\\go ...")
+	goDir := filepath.Join(destDir, "go")
+	_ = os.RemoveAll(goDir)
+
+	// Windows: Expand-Archive 优先，tar 作为备选（Win10+ 自带）
+	if err := runCommand("powershell", "-NoProfile", "-NonInteractive", "-Command",
+		fmt.Sprintf("Expand-Archive -Path '%s' -DestinationPath '%s' -Force", zipPath, destDir)); err != nil {
+		if err2 := runCommand("tar", "-xf", zipPath, "-C", destDir); err2 != nil {
+			_ = os.Remove(zipPath)
+			return fmt.Errorf("解压 Go 失败: %w", err2)
+		}
+	}
+	_ = os.Remove(zipPath)
+
+	binDir := filepath.Join(goDir, "bin")
+	goBin := filepath.Join(binDir, "go.exe")
+	if _, err := os.Stat(goBin); err != nil {
+		return fmt.Errorf("解压后未找到 %s", goBin)
+	}
+
+	AddDirToPath(binDir)
+	if err := PersistPathEnv(binDir); err != nil {
+		ui.Warning("写入 PATH 失败: %v（当前进程已临时生效）", err)
+	}
+
+	_ = RecordInstallation("go", "language", version, []string{"~/.local/go"}, []string{"# added by envkit"})
+	ui.Success("Go %s 已安装到 ~/.local/go", version)
+	return nil
 }
 
 func (g *GoInstaller) IsInstalled() bool {
@@ -373,17 +494,16 @@ func (r *RustInstaller) Install(version string) error {
 	var err error
 	if !commandExists("rustup") {
 		ui.Info("正在安装 rustup...")
-		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
-			cmd = exec.Command("winget", "install", "--id", "Rustlang.Rustup", "--silent", "--accept-package-agreements", "--accept-source-agreements")
+			err = installWithWinget("Rustlang.Rustup")
 		} else {
-			cmd = exec.Command("sh", "-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y")
+			cmd := exec.Command("sh", "-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y")
+			cmd.Env = append(os.Environ(),
+				"RUSTUP_DIST_SERVER=https://rsproxy.cn",
+				"RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
+			)
+			err = cmd.Run()
 		}
-		cmd.Env = append(os.Environ(),
-			"RUSTUP_DIST_SERVER=https://rsproxy.cn",
-			"RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
-		)
-		err = cmd.Run()
 		if err != nil {
 			if !r.IsInstalled() {
 				return fmt.Errorf("安装 rustup 失败: %w", err)
@@ -465,6 +585,25 @@ func GetInstaller(language string) LanguageInstaller {
 	}
 }
 
+// javaWingetMajorVersion 从 version 字符串提取 OpenJDK 主版本数字（仅保留开头连续数字）
+func javaWingetMajorVersion(version string) string {
+	v := strings.TrimSpace(version)
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "V")
+	var digits strings.Builder
+	for _, c := range v {
+		if c >= '0' && c <= '9' {
+			digits.WriteRune(c)
+			continue
+		}
+		break
+	}
+	if digits.Len() == 0 {
+		return "21" // 合理默认
+	}
+	return digits.String()
+}
+
 // JavaInstaller Java (JDK) 安装器
 type JavaInstaller struct{}
 
@@ -478,7 +617,8 @@ func (j *JavaInstaller) Install(version string) error {
 	case "darwin", "linux":
 		err = j.installWithSdkman(version)
 	case "windows":
-		err = exec.Command("winget", "install", "Microsoft.OpenJDK."+version).Run()
+		// Microsoft.OpenJDK.XX：从 version 中提取纯数字主版本（如 "21"、"21-open"、"17.0.9" → 21/17）
+		err = installWithWinget("Microsoft.OpenJDK." + javaWingetMajorVersion(version))
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
@@ -616,7 +756,7 @@ func (b *BunInstaller) Install(version string) error {
 	case "darwin", "linux":
 		err = b.installWithCurl()
 	case "windows":
-		err = exec.Command("winget", "install", "Jarred-Sumner.Bun").Run()
+		err = installWithWinget("Jarred-Sumner.Bun")
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}

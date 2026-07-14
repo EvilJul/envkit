@@ -16,6 +16,9 @@ type Tool struct {
 	Path      string
 }
 
+// windowsExecExts Windows 下常见可执行扩展名（LookPath 失败或目录扫描时使用）
+var windowsExecExts = []string{".exe", ".cmd", ".bat"}
+
 // lookPathWithFallback 尝试在系统的 PATH 中查找命令，如果找不到，则在常见的默认安装路径中查找
 func lookPathWithFallback(name string) (string, error) {
 	InitDetectionEnvironment()
@@ -25,15 +28,27 @@ func lookPathWithFallback(name string) (string, error) {
 		return path, nil
 	}
 
+	// Windows: 裸名失败时再试 .exe / .cmd / .bat（部分工具只以 .cmd/.bat 提供）
+	if runtime.GOOS == "windows" && filepath.Ext(name) == "" {
+		for _, ext := range windowsExecExts {
+			if p, e := exec.LookPath(name + ext); e == nil {
+				return p, nil
+			}
+		}
+	}
+
 	fallbackDirs := toolSearchDirs()
+	candidates := []string{name}
+	if runtime.GOOS == "windows" && filepath.Ext(name) == "" {
+		candidates = []string{name + ".exe", name + ".cmd", name + ".bat", name}
+	}
 
 	for _, dir := range fallbackDirs {
-		binPath := filepath.Join(dir, name)
-		if runtime.GOOS == "windows" {
-			binPath += ".exe"
-		}
-		if _, err := os.Stat(binPath); err == nil {
-			return binPath, nil
+		for _, cand := range candidates {
+			binPath := filepath.Join(dir, cand)
+			if _, err := os.Stat(binPath); err == nil {
+				return binPath, nil
+			}
 		}
 	}
 
@@ -202,8 +217,8 @@ func DetectLanguages() map[string]*Tool {
 	languages := map[string]*Tool{
 		"node":   DetectTool("node", "--version"),
 		"npm":    DetectTool("npm", "--version"),
-		"python": DetectTool("python3", "--version"),
-		"pip":    DetectTool("pip3", "--version"),
+		"python": detectPythonTool(),
+		"pip":    detectPipTool(),
 		"go":     DetectTool("go", "version"),
 		"rustc":  DetectTool("rustc", "--version"),
 		"cargo":  DetectTool("cargo", "--version"),
@@ -214,6 +229,28 @@ func DetectLanguages() map[string]*Tool {
 	}
 
 	return languages
+}
+
+// detectPythonTool 优先 python3，Windows 等环境回退 python
+func detectPythonTool() *Tool {
+	if t := DetectTool("python3", "--version"); t.Installed {
+		t.Name = "python"
+		return t
+	}
+	t := DetectTool("python", "--version")
+	t.Name = "python"
+	return t
+}
+
+// detectPipTool 优先 pip3，回退 pip
+func detectPipTool() *Tool {
+	if t := DetectTool("pip3", "--version"); t.Installed {
+		t.Name = "pip"
+		return t
+	}
+	t := DetectTool("pip", "--version")
+	t.Name = "pip"
+	return t
 }
 
 // DetectTools 检测常见开发工具

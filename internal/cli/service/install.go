@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/fusheng/envkit/internal/config"
@@ -191,7 +192,11 @@ func RunInstallation(cfg *config.Config) InstallResult {
 	} else {
 		ui.Success("开发环境配置完成！")
 	}
-	ui.Info("提示: 若新开命令找不到，请执行 source ~/.bashrc 或重开终端（PATH 已写入配置）")
+	if runtime.GOOS == "windows" {
+		ui.Info("提示: 请重新打开终端使 PATH 生效")
+	} else {
+		ui.Info("提示: 若新开命令找不到，请执行 source ~/.bashrc 或重开终端（PATH 已写入配置）")
+	}
 
 	finalStage := "done"
 	finalMsg := "安装流程结束"

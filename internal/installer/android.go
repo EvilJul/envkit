@@ -102,7 +102,11 @@ func (a *AndroidInstaller) Install() error {
 	_ = RecordInstallation("android", "tool", a.cmdlineToolsVersion, paths, shellLines)
 
 	ui.Success("Android SDK 安装完成！")
-	ui.Info("提示: 请重新打开终端或 source ~/.bashrc 使环境变量生效")
+	if runtime.GOOS == "windows" {
+		ui.Info("提示: 请重新打开终端使 PATH 生效")
+	} else {
+		ui.Info("提示: 请重新打开终端或 source ~/.bashrc 使环境变量生效")
+	}
 	return nil
 }
 
@@ -422,13 +426,14 @@ func (a *AndroidInstaller) setupEnv(sdkRoot string) error {
 		return a.persistAndroidEnvVars(sdkRoot)
 	}
 
-	// Windows 使用 setx 持久化
-	if !strings.Contains(strings.ToLower(os.Getenv("ANDROID_HOME")), strings.ToLower(sdkRoot)) {
-		// setx 会用新值覆盖已有变量，确保包含 ANDROID_HOME
-		_ = exec.Command("setx", "ANDROID_HOME", sdkRoot).Run()
-		_ = exec.Command("setx", "ANDROID_SDK_ROOT", sdkRoot).Run()
-		ui.Info("ANDROID_HOME / ANDROID_SDK_ROOT 已写入用户环境变量，请重启终端生效")
+	// Windows: 始终持久化到 User 环境，不因进程内 os.Setenv 已设置而跳过
+	if err := PersistUserEnvVar("ANDROID_HOME", sdkRoot); err != nil {
+		ui.Warning("写入 ANDROID_HOME 失败: %v", err)
 	}
+	if err := PersistUserEnvVar("ANDROID_SDK_ROOT", sdkRoot); err != nil {
+		ui.Warning("写入 ANDROID_SDK_ROOT 失败: %v", err)
+	}
+	ui.Info("ANDROID_HOME / ANDROID_SDK_ROOT 已写入用户环境变量，请重启终端生效")
 	return nil
 }
 
@@ -485,12 +490,16 @@ func (a *AndroidInstaller) installSdkComponents(sdkRoot string) error {
 
 	ui.Info("正在接受 Android SDK licenses ...")
 	// 使用 yes 自动化 license 确认（pipe 给 sdkmanager --licenses）
-	acceptCmd := exec.Command("yes")
-	acceptCmd.Stdin = nil
-	// 实际通过 sh -c "yes | sdkmanager --licenses" 执行
 	if runtime.GOOS == "windows" {
-		// Windows: 使用 echo 替代 yes
-		if err := runCommand("cmd", "/C", fmt.Sprintf("echo y | \"%s\" --licenses --sdk_root=%s", sdkmanagerBin, sdkRoot)); err != nil {
+		// 多份 y：sdkmanager 会连续询问多份 license；.bat 经 cmd /C 调用
+		// (echo y& echo y& ...) | "sdkmanager.bat" --licenses --sdk_root=...
+		yesParts := make([]string, 0, 40)
+		for i := 0; i < 40; i++ {
+			yesParts = append(yesParts, "echo y")
+		}
+		yesPipe := strings.Join(yesParts, "& ")
+		cmdLine := fmt.Sprintf("(%s) | \"%s\" --licenses --sdk_root=%s", yesPipe, sdkmanagerBin, sdkRoot)
+		if err := runCommand("cmd", "/C", cmdLine); err != nil {
 			ui.Warning("接受 licenses 失败（可稍后手动执行）: %v", err)
 		}
 	} else {
@@ -529,8 +538,15 @@ func (a *AndroidInstaller) installSdkComponents(sdkRoot string) error {
 	// 如未来需要切换 sdkmanager 仓库，可在此设置环境变量：
 	// os.Setenv("ANDROID_SDK_MANAGER_REPO_OVERRIDE", "https://mirrors.cloud.tencent.com/AndroidSDK/")
 	args := append([]string{"--sdk_root=" + sdkRoot}, toInstall...)
-	if err := runCommand(sdkmanagerBin, args...); err != nil {
-		return fmt.Errorf("安装 SDK 组件失败: %w", err)
+	var installErr error
+	if runtime.GOOS == "windows" {
+		// Windows 上 .bat 必须通过 cmd /C 调用
+		installErr = runWindowsScript(sdkmanagerBin, args...)
+	} else {
+		installErr = runCommand(sdkmanagerBin, args...)
+	}
+	if installErr != nil {
+		return fmt.Errorf("安装 SDK 组件失败: %w", installErr)
 	}
 
 	ui.Success("Android SDK 组件安装完成")
@@ -540,7 +556,12 @@ func (a *AndroidInstaller) installSdkComponents(sdkRoot string) error {
 // listInstalledComponents 列出已安装的 SDK 组件，返回 set 以便 O(1) 查找
 func (a *AndroidInstaller) listInstalledComponents(sdkRoot, sdkmanagerBin string) map[string]bool {
 	set := make(map[string]bool)
-	cmd := exec.Command(sdkmanagerBin, "--sdk_root="+sdkRoot, "--list_installed")
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/C", sdkmanagerBin, "--sdk_root="+sdkRoot, "--list_installed")
+	} else {
+		cmd = exec.Command(sdkmanagerBin, "--sdk_root="+sdkRoot, "--list_installed")
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		// 命令失败时直接返回空集（视为全部未安装）
