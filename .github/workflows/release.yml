@@ -1,75 +1,175 @@
-name: Build and Release
+name: Build and Release CLI
+
+# 构建并发布全平台 CLI 二进制，命名与 install.sh / install.ps1 对齐：
+#   envkit-linux-amd64
+#   envkit-linux-arm64
+#   envkit-darwin-amd64
+#   envkit-darwin-arm64
+#   envkit-windows-amd64.exe
+#   envkit-windows-arm64.exe
+#
+# 触发：推送 v* 标签 / PR 验证 / 手动运行
+# 仅在 tag 推送时创建 GitHub Release 并上传产物
 
 on:
   push:
     tags:
       - 'v*'
   pull_request:
-    branches: [ main ]
+    branches: [main]
+    paths:
+      - 'cmd/envkit/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'build.sh'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
-    name: Build
+    name: Build CLI (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        goos: [linux, darwin, windows]
-        goarch: [amd64, arm64]
-        exclude:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
           - goos: windows
             goarch: arm64
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.21'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
 
-    - name: Get dependencies
-      run: go mod download
+      - name: Resolve version
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-dev+${GITHUB_SHA::7}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Building EnvKit CLI v${VERSION} for ${{ matrix.goos }}/${{ matrix.goarch }}"
 
-    - name: Build
-      env:
-        GOOS: ${{ matrix.goos }}
-        GOARCH: ${{ matrix.goarch }}
-      run: |
-        OUTPUT_NAME=envkit-${{ matrix.goos }}-${{ matrix.goarch }}
-        if [ "${{ matrix.goos }}" = "windows" ]; then
-          OUTPUT_NAME="${OUTPUT_NAME}.exe"
-        fi
-        go build -ldflags="-s -w" -o dist/${OUTPUT_NAME} ./cmd/envkit
+      - name: Download modules
+        run: go mod download
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: envkit-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: dist/*
+      - name: Build
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          OUTPUT_NAME="envkit-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            OUTPUT_NAME="${OUTPUT_NAME}.exe"
+          fi
+          go build -trimpath \
+            -ldflags="-s -w -X github.com/fusheng/envkit/internal/cli.Version=${{ steps.meta.outputs.version }}" \
+            -o "dist/${OUTPUT_NAME}" \
+            ./cmd/envkit
+          ls -lh "dist/${OUTPUT_NAME}"
+          file "dist/${OUTPUT_NAME}" || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: envkit-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
 
   release:
-    name: Release
+    name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: dist
+      - name: Download all CLI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: dist/**/*
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Release assets:"
+          ls -lah dist/
+          # 校验 install 脚本期望的文件名均已产出
+          required=(
+            envkit-linux-amd64
+            envkit-linux-arm64
+            envkit-darwin-amd64
+            envkit-darwin-arm64
+            envkit-windows-amd64.exe
+            envkit-windows-arm64.exe
+          )
+          missing=0
+          for f in "${required[@]}"; do
+            if [ ! -f "dist/${f}" ]; then
+              echo "❌ missing: ${f}"
+              missing=1
+            else
+              echo "✓ ${f}"
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Required CLI assets missing; aborting release."
+            exit 1
+          fi
+          # 校验和（Linux 用户常用）
+          (
+            cd dist
+            sha256sum envkit-* > SHA256SUMS.txt
+          )
+          cat dist/SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/envkit-linux-amd64
+            dist/envkit-linux-arm64
+            dist/envkit-darwin-amd64
+            dist/envkit-darwin-arm64
+            dist/envkit-windows-amd64.exe
+            dist/envkit-windows-arm64.exe
+            dist/SHA256SUMS.txt
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

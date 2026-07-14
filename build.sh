@@ -1,39 +1,53 @@
 #!/bin/bash
+# 本地交叉编译全平台 CLI，产物命名与 install.sh / GitHub Release 一致
 
-set -e
+set -euo pipefail
 
-VERSION="0.1.0"
 APP_NAME="envkit"
+# 优先：环境变量 VERSION → git tag → 默认 0.2.0
+if [ -z "${VERSION:-}" ]; then
+  if git describe --tags --exact-match 2>/dev/null | grep -q '^v'; then
+    VERSION="$(git describe --tags --exact-match | sed 's/^v//')"
+  else
+    VERSION="0.2.0"
+  fi
+fi
 
-echo "🔨 Building EnvKit v${VERSION}..."
+echo "🔨 Building EnvKit CLI v${VERSION}..."
 
-# 清理旧的构建文件
 rm -rf dist/
 mkdir -p dist/
 
-# 构建不同平台的二进制文件
+# 与 .github/workflows/release.yml matrix 保持一致
 platforms=(
-    "linux/amd64"
-    "linux/arm64"
-    "darwin/amd64"
-    "darwin/arm64"
-    "windows/amd64"
+  "linux/amd64"
+  "linux/arm64"
+  "darwin/amd64"
+  "darwin/arm64"
+  "windows/amd64"
+  "windows/arm64"
 )
 
 for platform in "${platforms[@]}"; do
-    IFS='/' read -r -a parts <<< "$platform"
-    GOOS="${parts[0]}"
-    GOARCH="${parts[1]}"
+  IFS='/' read -r GOOS GOARCH <<< "${platform}"
 
-    output_name="${APP_NAME}-${GOOS}-${GOARCH}"
+  output_name="${APP_NAME}-${GOOS}-${GOARCH}"
+  if [ "${GOOS}" = "windows" ]; then
+    output_name="${output_name}.exe"
+  fi
 
-    if [ "$GOOS" = "windows" ]; then
-        output_name+=".exe"
-    fi
-
-    echo "  Building for ${GOOS}/${GOARCH}..."
-    GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w" -o "dist/${output_name}" ./cmd/envkit
+  echo "  → ${GOOS}/${GOARCH} → dist/${output_name}"
+  CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -trimpath \
+    -ldflags="-s -w -X github.com/fusheng/envkit/internal/cli.Version=${VERSION}" \
+    -o "dist/${output_name}" \
+    ./cmd/envkit
 done
 
-echo "✅ Build complete! Binaries are in dist/"
+echo ""
+echo "✅ Build complete! Binaries:"
 ls -lh dist/
+echo ""
+echo "Expected install download names:"
+echo "  envkit-linux-amd64 | envkit-linux-arm64"
+echo "  envkit-darwin-amd64 | envkit-darwin-arm64"
+echo "  envkit-windows-amd64.exe | envkit-windows-arm64.exe"

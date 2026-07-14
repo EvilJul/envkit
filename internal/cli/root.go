@@ -9,7 +9,8 @@ import (
 	"golang.org/x/term"
 )
 
-const Version = "0.2.0"
+// Version 由发布构建通过 -ldflags -X 注入；本地默认 0.2.0
+var Version = "0.2.0"
 
 var launchTUI bool
 

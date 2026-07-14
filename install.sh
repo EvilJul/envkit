@@ -3,7 +3,7 @@
 
 set -e
 
-REPO="fusheng/envkit"
+REPO="EvilJul/envkit"
 VERSION="latest"
 INSTALL_DIR="/usr/local/bin"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
