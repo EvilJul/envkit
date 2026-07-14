@@ -25,6 +25,11 @@ func AddDirToPath(dir string) {
 
 // PersistPathEnv 将环境变量修改写入 shell 配置文件（Unix）或系统环境变量（Windows）
 func PersistPathEnv(dir string) error {
+	return PersistPathEnvTagged(dir, "envkit")
+}
+
+// PersistPathEnvTagged 写入 PATH，并使用可识别标签（便于按组件卸载）
+func PersistPathEnvTagged(dir, tag string) error {
 	if runtime.GOOS == "windows" {
 		return persistPathEnvWindows(dir)
 	}
@@ -34,31 +39,64 @@ func PersistPathEnv(dir string) error {
 		return err
 	}
 
-	// 尝试用 $HOME 代替绝对路径，使配置更简洁
 	pathValue := dir
 	if strings.HasPrefix(dir, home) {
 		pathValue = "$HOME" + strings.TrimPrefix(dir, home)
 	}
+	if tag == "" {
+		tag = "envkit"
+	}
+	exportCmd := fmt.Sprintf("\n# envkit:%s\nexport PATH=\"%s:$PATH\"\n", tag, pathValue)
 
-	exportCmd := fmt.Sprintf("\n# added by envkit\nexport PATH=\"%s:$PATH\"\n", pathValue)
-
-	// 获取 shell 配置文件
 	files := getShellConfigFiles()
+	if len(files) == 0 {
+		return fmt.Errorf("未找到可写入的 shell 配置文件")
+	}
 
+	// 确保至少一个配置文件存在（无则创建首选）
+	primary := files[0]
+	if _, err := os.Stat(primary); os.IsNotExist(err) {
+		if err := os.WriteFile(primary, []byte("# created by envkit\n"), 0644); err != nil {
+			return fmt.Errorf("创建 shell 配置失败 %s: %w", primary, err)
+		}
+	}
+
+	written := 0
+	var lastErr error
 	for _, file := range files {
-		if _, err := os.Stat(file); err == nil {
-			content, err := os.ReadFile(file)
-			if err == nil {
-				// 避免重复写入
-				if !strings.Contains(string(content), dir) && !strings.Contains(string(content), pathValue) {
-					f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0644)
-					if err == nil {
-						_, _ = f.WriteString(exportCmd)
-						_ = f.Close()
-					}
-				}
+		if _, err := os.Stat(file); os.IsNotExist(err) {
+			continue
+		}
+		content, err := os.ReadFile(file)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		// 已包含该目录或标签则跳过
+		if strings.Contains(string(content), dir) || strings.Contains(string(content), pathValue) {
+			if strings.Contains(string(content), "# envkit:"+tag) || strings.Contains(string(content), pathValue) {
+				written++
+				continue
 			}
 		}
+		f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if _, err := f.WriteString(exportCmd); err != nil {
+			_ = f.Close()
+			lastErr = err
+			continue
+		}
+		_ = f.Close()
+		written++
+	}
+	if written == 0 {
+		if lastErr != nil {
+			return fmt.Errorf("写入 PATH 到 shell 配置失败: %w", lastErr)
+		}
+		return fmt.Errorf("未能将 PATH 写入任何 shell 配置文件")
 	}
 	return nil
 }

@@ -40,11 +40,14 @@ func (g *GitInstaller) Install() error {
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
 
-	if err == nil || g.IsInstalled() {
-		RecordInstallation("git", "tool", "latest", nil, nil)
-		return nil
+	if err != nil {
+		return err
 	}
-	return err
+	if !g.IsInstalled() {
+		return fmt.Errorf("Git 安装完成但未检测到 git 命令")
+	}
+	_ = RecordInstallation("git", "tool", "latest", nil, []string{"# envkit:git"})
+	return nil
 }
 
 func (g *GitInstaller) IsInstalled() bool {
@@ -149,8 +152,11 @@ func (d *DockerInstaller) installOnLinux() error {
 		ui.Warning("设置开机自启失败: %v", err)
 	}
 
+	if !d.IsInstalled() {
+		return fmt.Errorf("Docker 安装流程结束但未检测到 docker 命令")
+	}
 	ui.Success("Docker 安装成功！")
-	RecordInstallation("docker", "tool", "latest", nil, nil)
+	_ = RecordInstallation("docker", "tool", "latest", nil, []string{"# envkit:docker"})
 	ui.Info("提示: 运行 'sudo usermod -aG docker $USER' 将当前用户添加到 docker 组")
 	return nil
 }
@@ -188,16 +194,19 @@ func (v *VSCodeInstaller) Install() error {
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
 
-	if err == nil || v.IsInstalled() {
-		switch runtime.GOOS {
-		case "darwin":
-			RecordInstallation("vscode", "tool", "stable", []string{"/Applications/Visual Studio Code.app", "~/.local/bin/code", "/usr/local/bin/code"}, nil)
-		default:
-			RecordInstallation("vscode", "tool", "stable", nil, nil)
-		}
-		return nil
+	if err != nil {
+		return err
 	}
-	return err
+	if !v.IsInstalled() {
+		return fmt.Errorf("VSCode 安装完成但未检测到 code 命令")
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		_ = RecordInstallation("vscode", "tool", "stable", []string{"/Applications/Visual Studio Code.app", "~/.local/bin/code", "/usr/local/bin/code"}, []string{"# envkit:vscode"})
+	default:
+		_ = RecordInstallation("vscode", "tool", "stable", nil, []string{"# envkit:vscode"})
+	}
+	return nil
 }
 
 func (v *VSCodeInstaller) installOnDarwin() error {
@@ -280,9 +289,16 @@ func (v *VSCodeInstaller) installOnLinux() error {
 	ui.Info("正在下载 VSCode...")
 
 	debPath := filepath.Join(os.TempDir(), "vscode.deb")
+	osKey := "linux-deb-x64"
+	switch runtime.GOARCH {
+	case "arm64", "aarch64":
+		osKey = "linux-deb-arm64"
+	case "arm":
+		osKey = "linux-deb-armhf"
+	}
 	if err := runCommand("curl", "-fsSL", "-o", debPath,
-		"https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64"); err != nil {
-		return fmt.Errorf("下载失败: %w", err)
+		"https://code.visualstudio.com/sha/download?build=stable&os="+osKey); err != nil {
+		return fmt.Errorf("下载失败 (%s): %w", osKey, err)
 	}
 
 	ui.Info("正在安装...")
@@ -426,7 +442,7 @@ func (m *MinicondaInstaller) Install() error {
 	initCmd := exec.Command(condaBin, "init", "--all")
 	_ = initCmd.Run()
 
-	RecordInstallation("miniconda", "tool", "latest", []string{"~/miniconda3", "~/.condarc"}, []string{"# >>> conda initialize >>>", "# added by envkit"})
+	_ = RecordInstallation("miniconda", "tool", "latest", []string{"~/miniconda3", "~/.condarc"}, []string{"# >>> conda initialize >>>", "# added by envkit"})
 
 	return nil
 }
@@ -565,16 +581,19 @@ func (k *KubectlInstaller) Install() error {
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
 
-	if err == nil || k.IsInstalled() {
-		switch runtime.GOOS {
-		case "darwin", "linux":
-			RecordInstallation("kubectl", "tool", "v1.30.0", []string{"~/.local/bin/kubectl"}, []string{"# added by envkit"})
-		default:
-			RecordInstallation("kubectl", "tool", "v1.30.0", nil, nil)
-		}
-		return nil
+	if err != nil {
+		return err
 	}
-	return err
+	if !k.IsInstalled() {
+		return fmt.Errorf("kubectl 安装完成但未检测到命令")
+	}
+	switch runtime.GOOS {
+	case "darwin", "linux":
+		_ = RecordInstallation("kubectl", "tool", "v1.30.0", []string{"~/.local/bin/kubectl"}, []string{"# envkit:kubectl"})
+	default:
+		_ = RecordInstallation("kubectl", "tool", "v1.30.0", nil, []string{"# envkit:kubectl"})
+	}
+	return nil
 }
 
 func (k *KubectlInstaller) installOnDarwin() error {
@@ -664,16 +683,19 @@ func (m *MinikubeInstaller) Install() error {
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
 
-	if err == nil || m.IsInstalled() {
-		switch runtime.GOOS {
-		case "darwin", "linux":
-			RecordInstallation("minikube", "tool", "latest", []string{"~/.local/bin/minikube"}, []string{"# added by envkit"})
-		default:
-			RecordInstallation("minikube", "tool", "latest", nil, nil)
-		}
-		return nil
+	if err != nil {
+		return err
 	}
-	return err
+	if !m.IsInstalled() {
+		return fmt.Errorf("minikube 安装完成但未检测到命令")
+	}
+	switch runtime.GOOS {
+	case "darwin", "linux":
+		_ = RecordInstallation("minikube", "tool", "latest", []string{"~/.local/bin/minikube"}, []string{"# envkit:minikube"})
+	default:
+		_ = RecordInstallation("minikube", "tool", "latest", nil, []string{"# envkit:minikube"})
+	}
+	return nil
 }
 
 func (m *MinikubeInstaller) installOnDarwin() error {
@@ -749,11 +771,14 @@ func (e *EspIdfInstaller) Install() error {
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
 
-	if err == nil || e.IsInstalled() {
-		RecordInstallation("espidf", "tool", "latest", []string{"~/.espressif"}, []string{".espressif/export.sh"})
-		return nil
+	if err != nil {
+		return err
 	}
-	return err
+	if !e.IsInstalled() {
+		return fmt.Errorf("ESP-IDF/EIM 安装完成但未检测到 eim 命令")
+	}
+	_ = RecordInstallation("espidf", "tool", "latest", []string{"~/.espressif"}, []string{"# envkit:espidf", ".espressif/export.sh"})
+	return nil
 }
 
 func (e *EspIdfInstaller) installOnDarwin() error {

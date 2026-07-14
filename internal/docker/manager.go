@@ -186,15 +186,58 @@ func (m *ContainerManager) StartMongoDB(version string) error {
 	return nil
 }
 
-// ListContainers 列出所有 envkit 管理的容器
-func (m *ContainerManager) ListContainers() error {
-	cmd := exec.Command("docker", "ps", "-a", "--filter", "name=envkit-", "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}")
+// ContainerInfo 容器摘要（供 CLI 表格与 TUI 展示）
+type ContainerInfo struct {
+	Name   string
+	Status string
+	Ports  string
+}
+
+// ListContainersData 返回 envkit 管理的容器列表
+func (m *ContainerManager) ListContainersData() ([]ContainerInfo, error) {
+	cmd := exec.Command("docker", "ps", "-a",
+		"--filter", "name=envkit-",
+		"--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}")
 	output, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("获取容器列表失败: %w", err)
+		return nil, fmt.Errorf("获取容器列表失败: %w", err)
 	}
+	var rows []ContainerInfo
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		info := ContainerInfo{}
+		if len(parts) > 0 {
+			info.Name = parts[0]
+		}
+		if len(parts) > 1 {
+			info.Status = parts[1]
+		}
+		if len(parts) > 2 {
+			info.Ports = parts[2]
+		}
+		rows = append(rows, info)
+	}
+	return rows, nil
+}
 
-	fmt.Println(string(output))
+// ListContainers 列出所有 envkit 管理的容器（打印到 stdout，CLI 用）
+func (m *ContainerManager) ListContainers() error {
+	rows, err := m.ListContainersData()
+	if err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		fmt.Println("（没有 envkit-* 容器）")
+		return nil
+	}
+	fmt.Printf("%-24s %-24s %s\n", "NAMES", "STATUS", "PORTS")
+	for _, r := range rows {
+		fmt.Printf("%-24s %-24s %s\n", r.Name, r.Status, r.Ports)
+	}
 	return nil
 }
 

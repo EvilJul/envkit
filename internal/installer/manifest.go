@@ -16,8 +16,8 @@ type ManifestItem struct {
 	Name        string    `json:"name"`
 	Type        string    `json:"type"` // "language" or "tool"
 	Version     string    `json:"version"`
-	Paths       []string  `json:"paths"`         // 创建的文件夹/文件路径
-	ShellLines  []string  `json:"shell_lines"`   // 写入 shell 配置文件中的关键字特征
+	Paths       []string  `json:"paths"`
+	ShellLines  []string  `json:"shell_lines"`
 	InstalledAt time.Time `json:"installed_at"`
 }
 
@@ -26,7 +26,6 @@ type Manifest struct {
 	Items map[string]ManifestItem `json:"items"`
 }
 
-// getManifestPath 获取清单 JSON 文件路径 (~/.envkit/manifest.json)
 func getManifestPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -39,7 +38,7 @@ func getManifestPath() (string, error) {
 	return filepath.Join(dir, "manifest.json"), nil
 }
 
-// LoadManifest 加载现有清单
+// LoadManifest 加载现有清单；损坏的 JSON 返回错误（避免静默清空）
 func LoadManifest() (*Manifest, error) {
 	path, err := getManifestPath()
 	if err != nil {
@@ -54,10 +53,13 @@ func LoadManifest() (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return &Manifest{Items: make(map[string]ManifestItem)}, nil
+	}
 
 	var m Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
-		return &Manifest{Items: make(map[string]ManifestItem)}, nil
+		return nil, fmt.Errorf("解析清单失败 (%s): %w", path, err)
 	}
 	if m.Items == nil {
 		m.Items = make(map[string]ManifestItem)
@@ -80,22 +82,26 @@ func SaveManifest(m *Manifest) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// RecordInstallation 记录一次成功安装
-func RecordInstallation(name string, itemType string, version string, paths []string, shellLines []string) {
+// RecordInstallation 记录一次成功安装；保存失败返回 error
+func RecordInstallation(name string, itemType string, version string, paths []string, shellLines []string) error {
 	m, err := LoadManifest()
 	if err != nil {
-		return
+		return err
 	}
 
 	home, _ := os.UserHomeDir()
 	var resolvedPaths []string
 	for _, p := range paths {
-		// 转换为平台特定路径
 		p = filepath.FromSlash(p)
 		if strings.HasPrefix(p, "~") {
 			p = filepath.Join(home, p[1:])
 		}
 		resolvedPaths = append(resolvedPaths, filepath.Clean(p))
+	}
+
+	// 默认带组件标签，便于精确清理 shell
+	if len(shellLines) == 0 {
+		shellLines = []string{"# envkit:" + name}
 	}
 
 	m.Items[name] = ManifestItem{
@@ -107,21 +113,22 @@ func RecordInstallation(name string, itemType string, version string, paths []st
 		InstalledAt: time.Now(),
 	}
 
-	_ = SaveManifest(m)
+	return SaveManifest(m)
 }
 
-// CleanShellConfigs 清理 shell 配置文件中写入的环境变量行
-func CleanShellConfigs(keywords []string) error {
-	if len(keywords) == 0 {
+// CleanShellConfigs 清理 shell 配置文件中与 keywords 匹配的行
+// stripConda: 仅卸载 miniconda 时为 true
+func CleanShellConfigs(keywords []string, stripConda bool) error {
+	if len(keywords) == 0 && !stripConda {
 		return nil
 	}
 
 	files := getShellConfigFiles()
 	if files == nil {
-		// Windows 平台没有 shell 配置文件
 		return nil
 	}
 
+	var lastErr error
 	for _, file := range files {
 		if _, err := os.Stat(file); os.IsNotExist(err) {
 			continue
@@ -129,6 +136,7 @@ func CleanShellConfigs(keywords []string) error {
 
 		contentBytes, err := os.ReadFile(file)
 		if err != nil {
+			lastErr = err
 			continue
 		}
 
@@ -138,9 +146,7 @@ func CleanShellConfigs(keywords []string) error {
 		for i := 0; i < len(lines); i++ {
 			line := lines[i]
 
-			// 特殊处理 conda initialize 块
-			if strings.Contains(line, "# >>> conda initialize >>>") {
-				// 寻找闭合行并跳过整个块
+			if stripConda && strings.Contains(line, "# >>> conda initialize >>>") {
 				for i+1 < len(lines) {
 					i++
 					if strings.Contains(lines[i], "# <<< conda initialize <<<") {
@@ -151,21 +157,20 @@ func CleanShellConfigs(keywords []string) error {
 			}
 
 			shouldSkip := false
-
-			// 检查是否命中任何关键字
 			for _, kw := range keywords {
-				if strings.Contains(line, kw) {
+				if kw != "" && strings.Contains(line, kw) {
 					shouldSkip = true
 					break
 				}
 			}
 
 			if shouldSkip {
-				// 如果是注释行如 "# added by envkit" 或 "# fnm integration"，我们通常还会额外跳过它后面的相关指令行和空行
 				if strings.HasPrefix(strings.TrimSpace(line), "#") {
 					for i+1 < len(lines) {
 						trimmedNext := strings.TrimSpace(lines[i+1])
-						if strings.HasPrefix(trimmedNext, "export ") || strings.HasPrefix(trimmedNext, "eval ") || trimmedNext == "" {
+						if strings.HasPrefix(trimmedNext, "export ") || strings.HasPrefix(trimmedNext, "eval ") ||
+							strings.HasPrefix(trimmedNext, "[[") || strings.HasPrefix(trimmedNext, "[ -s") ||
+							trimmedNext == "" {
 							i++
 						} else {
 							break
@@ -178,15 +183,16 @@ func CleanShellConfigs(keywords []string) error {
 			newLines = append(newLines, line)
 		}
 
-		// 写回文件并去除多余的空行
 		newContent := strings.Join(newLines, "\n")
-		_ = os.WriteFile(file, []byte(newContent), 0644)
+		if err := os.WriteFile(file, []byte(newContent), 0644); err != nil {
+			lastErr = err
+		}
 	}
 
-	return nil
+	return lastErr
 }
 
-// UninstallComponent 卸载单个组件
+// UninstallComponent 卸载单个组件；任一步失败则返回 error
 func UninstallComponent(name string) error {
 	m, err := LoadManifest()
 	if err != nil {
@@ -200,39 +206,50 @@ func UninstallComponent(name string) error {
 
 	ui.Info("正在卸载组件: %s...", name)
 
-	// 1. 删除安装目录和相关文件
+	var errs []string
 	for _, path := range item.Paths {
-		if path == "" || path == "/" {
-			continue // 绝对安全保证，禁止删除根目录
+		if path == "" || path == "/" || path == filepath.Dir("/") {
+			continue
 		}
 
-		// 使用 Lstat 检查符号链接
 		info, err := os.Lstat(path)
 		if err != nil {
-			continue // 路径不存在，跳过
+			if !os.IsNotExist(err) {
+				errs = append(errs, fmt.Sprintf("检查 %s: %v", path, err))
+			}
+			continue
 		}
 
 		if info.Mode()&os.ModeSymlink != 0 {
-			// 是符号链接，只删除链接本身
 			ui.Info("  清理符号链接: %s", path)
-			_ = os.Remove(path)
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				errs = append(errs, fmt.Sprintf("删除链接 %s: %v", path, err))
+			}
 		} else {
-			// 不是符号链接，删除整个目录/文件
 			ui.Info("  清理路径: %s", path)
-			_ = os.RemoveAll(path)
+			if err := os.RemoveAll(path); err != nil {
+				errs = append(errs, fmt.Sprintf("删除 %s: %v", path, err))
+			}
 		}
 	}
 
-	// 2. 清理环境变量配置
 	if len(item.ShellLines) > 0 {
 		ui.Info("  清理 Shell 环境变量配置...")
-		_ = CleanShellConfigs(item.ShellLines)
+		stripConda := name == "miniconda" || name == "conda"
+		if err := CleanShellConfigs(item.ShellLines, stripConda); err != nil {
+			errs = append(errs, fmt.Sprintf("清理 shell 配置: %v", err))
+		}
 	}
 
-	// 3. 从清单中移除并保存
-	delete(m.Items, name)
-	_ = SaveManifest(m)
+	if len(errs) > 0 {
+		return fmt.Errorf("卸载 %s 未完全成功: %s", name, strings.Join(errs, "; "))
+	}
 
-	ui.Success("组件 '%s' 已彻底卸载完成！", name)
+	delete(m.Items, name)
+	if err := SaveManifest(m); err != nil {
+		return fmt.Errorf("更新清单失败: %w", err)
+	}
+
+	ui.Success("组件 '%s' 已卸载完成", name)
 	return nil
 }

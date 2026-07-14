@@ -124,6 +124,7 @@ func (m *installWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.items[idx].selected = !m.items[idx].selected
 					m.refreshList()
 				}
+				return m, nil
 			case "enter":
 				var selected []service.InstallOption
 				for _, it := range m.items {
@@ -194,7 +195,10 @@ func listenInstallMsg(ch <-chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
 		msg, ok := <-ch
 		if !ok {
-			return installFinishedMsg{}
+			// 通道异常关闭且无结果：视为失败，禁止假成功
+			return installFinishedMsg{
+				result: service.InstallResult{FailedComponents: []string{"安装进程异常结束"}},
+			}
 		}
 		return msg
 	}
@@ -205,6 +209,19 @@ func (m *installWizard) beginInstall() tea.Cmd {
 	ch := m.installCh
 	return func() tea.Msg {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case ch <- installFinishedMsg{
+						result: service.InstallResult{
+							FailedComponents: []string{fmt.Sprintf("安装 panic: %v", r)},
+						},
+					}:
+					default:
+					}
+				}
+				close(ch)
+			}()
 			rep := &teaProgressReporter{ch: ch}
 			oldRep := prog.SetReporter(rep)
 			defer prog.SetReporter(oldRep)
@@ -212,7 +229,6 @@ func (m *installWizard) beginInstall() tea.Cmd {
 			defer ui.ResetRenderer()
 			result := service.RunInstallation(cfg)
 			ch <- installFinishedMsg{result: result}
-			close(ch)
 		}()
 		return nil
 	}
@@ -266,6 +282,8 @@ func (m *installWizard) View() string {
 					msg += "\n  • " + c
 				}
 			}
+		} else if len(m.result.Succeeded) == 0 {
+			msg = warningStyle.Render("没有组件被安装（可能已全部跳过或结果为空）")
 		} else {
 			msg = successStyle.Render("全部安装成功！")
 			for _, c := range m.result.Succeeded {

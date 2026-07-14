@@ -10,11 +10,12 @@ import (
 )
 
 type initWizard struct {
-	list   list.Model
-	done   bool
-	errMsg string
-	width  int
-	height int
+	list      list.Model
+	done      bool
+	saved     bool
+	errMsg    string
+	width     int
+	height    int
 }
 
 type templateItem struct {
@@ -52,11 +53,18 @@ func (m *initWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetWidth(msg.Width)
 		m.list.SetHeight(msg.Height - 8)
 	case initSavedMsg:
+		m.saved = true
 		m.errMsg = successStyle.Render("已生成 dev-env.yaml，运行 envkit install -f dev-env.yaml 开始安装")
-		m.done = true
 	case initErrorMsg:
 		m.errMsg = errorStyle.Render(msg.err)
 	case tea.KeyMsg:
+		if m.saved {
+			switch msg.String() {
+			case "enter", "esc", "q":
+				m.done = true
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "enter":
 			if item, ok := m.list.SelectedItem().(templateItem); ok {
@@ -91,9 +99,15 @@ func (m *initWizard) View() string {
 		b.WriteString(m.errMsg)
 	}
 	b.WriteString("\n")
-	b.WriteString(m.list.View())
+	if !m.saved {
+		b.WriteString(m.list.View())
+	}
 	b.WriteString("\n")
-	b.WriteString(backKeyHint())
+	if m.saved {
+		b.WriteString(renderHelp("Enter 返回"))
+	} else {
+		b.WriteString(backKeyHint())
+	}
 	return b.String()
 }
 

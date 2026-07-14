@@ -91,13 +91,18 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// 任意层级均可 ctrl+c 退出
+		if msg.String() == "ctrl+c" {
+			m.quitting = true
+			return m, tea.Quit
+		}
 		if m.transitioning {
 			return m, nil
 		}
 		if m.sub != nil {
 			switch msg.String() {
 			case "esc", "q":
-				// 安装进行中禁止直接丢弃子视图（会导致 install goroutine 阻塞/进度泄漏）
+				// 进行中禁止丢弃子视图
 				if b, ok := m.sub.(busyView); ok && b.Busy() {
 					return m, nil
 				}

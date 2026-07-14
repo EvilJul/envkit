@@ -66,12 +66,11 @@ func (p *Parser) Validate(config *Config) error {
 func isValidLanguage(name string) bool {
 	validLanguages := []string{
 		"node", "nodejs",
-		"python",
+		"python", "python3",
 		"go", "golang",
 		"rust",
-		"java",
-		"ruby",
-		"php",
+		"java", "jdk",
+		"bun",
 	}
 
 	for _, valid := range validLanguages {

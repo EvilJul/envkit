@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fusheng/envkit/internal/cli/service"
+	"github.com/fusheng/envkit/internal/ui"
 )
 
 type uninstallPhase int
@@ -35,16 +36,17 @@ func (i uninstallItem) FilterValue() string  { return i.item.Name }
 func (i uninstallItem) Description() string { return i.item.Version + " @ " + i.item.InstalledAt }
 
 type uninstallWizard struct {
-	phase    uninstallPhase
-	list     list.Model
-	items    []uninstallItem
-	selected []string
-	loading  loadingModel
-	ready    bool
-	done     bool
-	errMsg   string
-	width    int
-	height   int
+	phase      uninstallPhase
+	list       list.Model
+	items      []uninstallItem
+	selected   []string
+	loading    loadingModel
+	ready      bool
+	done       bool
+	errMsg     string
+	finishErrs []string
+	width      int
+	height     int
 }
 
 func newUninstallWizard() *uninstallWizard {
@@ -58,10 +60,11 @@ func (m *uninstallWizard) Init() tea.Cmd {
 	return tea.Batch(m.loading.Init(), func() tea.Msg {
 		items := []uninstallItem{}
 		manifest, err := service.LoadManifestItems()
-		if err == nil {
-			for _, it := range manifest {
-				items = append(items, uninstallItem{item: it})
-			}
+		if err != nil {
+			return uninstallLoadedMsg{err: err.Error()}
+		}
+		for _, it := range manifest {
+			items = append(items, uninstallItem{item: it})
 		}
 		return uninstallLoadedMsg{items: items}
 	})
@@ -69,6 +72,7 @@ func (m *uninstallWizard) Init() tea.Cmd {
 
 type uninstallLoadedMsg struct {
 	items []uninstallItem
+	err   string
 }
 
 func (m *uninstallWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -80,6 +84,12 @@ func (m *uninstallWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.list.SetHeight(msg.Height - 8)
 		}
 	case uninstallLoadedMsg:
+		if msg.err != "" {
+			m.errMsg = msg.err
+			m.ready = true
+			m.items = nil
+			return m, nil
+		}
 		m.items = msg.items
 		listItems := make([]list.Item, len(m.items))
 		for i, it := range m.items {
@@ -98,6 +108,7 @@ func (m *uninstallWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ready = true
 	case uninstallFinishedMsg:
 		m.phase = uninstallDone
+		m.finishErrs = msg.errs
 	case tea.KeyMsg:
 		switch m.phase {
 		case uninstallSelect:
@@ -108,6 +119,7 @@ func (m *uninstallWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.items[idx].selected = !m.items[idx].selected
 					m.refreshList()
 				}
+				return m, nil
 			case "a":
 				for i := range m.items {
 					m.items[i].selected = true
@@ -175,21 +187,33 @@ func (m *uninstallWizard) refreshList() {
 	m.list.SetItems(items)
 }
 
-type uninstallFinishedMsg struct{}
+type uninstallFinishedMsg struct {
+	errs []string
+}
 
 func (m *uninstallWizard) runUninstall() tea.Cmd {
 	names := append([]string(nil), m.selected...)
 	return func() tea.Msg {
+		ui.SetRenderer(ui.NewSilentRenderer())
+		defer ui.ResetRenderer()
+		var errs []string
 		for _, name := range names {
-			_ = service.UninstallComponent(name)
+			if err := service.UninstallComponent(name); err != nil {
+				errs = append(errs, err.Error())
+			}
 		}
-		return uninstallFinishedMsg{}
+		return uninstallFinishedMsg{errs: errs}
 	}
 }
 
 func (m *uninstallWizard) View() string {
 	if !m.ready {
 		return m.loading.View()
+	}
+	if m.errMsg != "" && len(m.items) == 0 {
+		return renderTitle("卸载组件", "") + "\n" +
+			errorStyle.Render(m.errMsg) + "\n" +
+			backKeyHint()
 	}
 	if len(m.items) == 0 {
 		return renderTitle("卸载组件", "") + "\n" +
@@ -220,11 +244,22 @@ func (m *uninstallWizard) View() string {
 	case uninstallRunning:
 		return m.loading.View()
 	case uninstallDone:
+		msg := successStyle.Render("所选组件已卸载。")
+		if len(m.finishErrs) > 0 {
+			msg = warningStyle.Render("部分卸载失败:")
+			for _, e := range m.finishErrs {
+				msg += "\n  • " + errorStyle.Render(e)
+			}
+		}
 		return renderTitle("卸载完成", "") + "\n" +
-			successStyle.Render("所选组件已卸载。") + "\n" +
+			boxStyle.Render(msg) + "\n" +
 			renderHelp("Enter 返回")
 	}
 	return ""
 }
 
 func (m *uninstallWizard) Done() bool { return m.done }
+
+func (m *uninstallWizard) Busy() bool {
+	return m.phase == uninstallRunning || !m.ready
+}

@@ -67,8 +67,10 @@ func InstallOptions() []InstallOption {
 		{"Minikube", "minikube", "tool", ""},
 		{"ESP-IDF", "espidf", "tool", ""},
 		{"Android SDK", "android", "tool", ""},
+		{"PostgreSQL", "postgresql", "database", "16"},
 		{"Redis", "redis", "database", "7"},
 		{"MySQL", "mysql", "database", "8.0"},
+		{"MongoDB", "mongodb", "database", "6.0"},
 	}
 }
 

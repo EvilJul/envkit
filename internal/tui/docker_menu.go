@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fusheng/envkit/internal/cli/service"
+	"github.com/fusheng/envkit/internal/ui"
 )
 
 type dockerPhase int
@@ -130,7 +131,7 @@ func (m *dockerMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focusIndex = (m.focusIndex + 1) % 2
 				m.updateFocus()
 			case "shift+tab", "up":
-				m.focusIndex = (m.focusIndex + 1) % 2
+				m.focusIndex = (m.focusIndex - 1 + 2) % 2
 				m.updateFocus()
 			case "enter":
 				m.phase = dockerRunning
@@ -201,10 +202,21 @@ type dockerActionDoneMsg struct {
 
 func (m *dockerMenuModel) runList() tea.Cmd {
 	return func() tea.Msg {
-		if err := service.DockerList(); err != nil {
+		ui.SetRenderer(ui.NewSilentRenderer())
+		defer ui.ResetRenderer()
+		rows, err := service.DockerListData()
+		if err != nil {
 			return dockerActionDoneMsg{err: err}
 		}
-		return dockerActionDoneMsg{message: "容器列表已输出到终端（TUI 外）"}
+		if len(rows) == 0 {
+			return dockerActionDoneMsg{message: "（没有 envkit-* 容器）"}
+		}
+		var b strings.Builder
+		b.WriteString(fmt.Sprintf("%-24s %-24s %s\n", "NAMES", "STATUS", "PORTS"))
+		for _, r := range rows {
+			b.WriteString(fmt.Sprintf("%-24s %-24s %s\n", r.Name, r.Status, r.Ports))
+		}
+		return dockerActionDoneMsg{message: strings.TrimRight(b.String(), "\n")}
 	}
 }
 
@@ -280,3 +292,5 @@ func (m *dockerMenuModel) View() string {
 }
 
 func (m *dockerMenuModel) Done() bool { return m.done }
+
+func (m *dockerMenuModel) Busy() bool { return m.phase == dockerRunning }

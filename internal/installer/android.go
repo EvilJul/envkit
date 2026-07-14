@@ -78,29 +78,31 @@ func (a *AndroidInstaller) Install() error {
 		return installErr
 	}
 
-	// 配置环境变量（ANDROID_HOME / ANDROID_SDK_ROOT / PATH）
+	// 先装组件，再写 PATH（否则 platform-tools 还不存在会被跳过）
+	if err := a.installSdkComponents(sdkRoot); err != nil {
+		return fmt.Errorf("安装 SDK 组件失败: %w", err)
+	}
+
 	if err := a.setupEnv(sdkRoot); err != nil {
 		ui.Warning("配置环境变量失败: %v", err)
 	}
+	// 组件装完后再次确保 PATH
+	_ = a.setupEnv(sdkRoot)
 
-	// 使用 sdkmanager 安装基础组件（platform-tools / build-tools / platforms）
-	if err := a.installSdkComponents(sdkRoot); err != nil {
-		ui.Warning("安装 SDK 组件失败: %v", err)
-		// 不直接返回，因为 cmdline-tools 已经可用
+	if !a.IsInstalled() {
+		return fmt.Errorf("Android SDK 安装未完成：未检测到 adb（platform-tools）")
 	}
 
-	// 记录安装信息，便于后续 uninstall
 	paths := []string{sdkRoot}
 	shellLines := []string{
+		"# envkit:android",
 		"ANDROID_HOME",
 		"ANDROID_SDK_ROOT",
-		"# added by envkit (android)",
-		"android-sdk",
 	}
-	RecordInstallation("android", "tool", a.cmdlineToolsVersion, paths, shellLines)
+	_ = RecordInstallation("android", "tool", a.cmdlineToolsVersion, paths, shellLines)
 
 	ui.Success("Android SDK 安装完成！")
-	ui.Info("提示: 请重新打开终端或执行 'source ~/.zshrc' / 'source ~/.bashrc' 使环境变量生效")
+	ui.Info("提示: 请重新打开终端或 source ~/.bashrc 使环境变量生效")
 	return nil
 }
 
