@@ -30,6 +30,7 @@ var (
 	successStyle = lipgloss.NewStyle().Foreground(colorSuccess)
 	warningStyle = lipgloss.NewStyle().Foreground(colorWarning)
 	errorStyle   = lipgloss.NewStyle().Foreground(colorError)
+	mutedStyle   = lipgloss.NewStyle().Foreground(colorMuted)
 
 	selectedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#ffffff")).

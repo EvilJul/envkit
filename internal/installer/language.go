@@ -217,7 +217,8 @@ func (g *GoInstaller) Install(version string) error {
 	case "darwin":
 		err = g.installWithBrew(version)
 	case "linux":
-		err = g.installFromSource(version)
+		// 用户级安装到 ~/.local/go，避免 sudo /usr/local（TUI/无密码场景会假失败或假成功）
+		err = g.installUserLocal(version, "linux")
 	case "windows":
 		err = g.installWithWinget(version)
 	default:
@@ -226,6 +227,9 @@ func (g *GoInstaller) Install(version string) error {
 
 	if err != nil {
 		return err
+	}
+	if !g.IsInstalled() {
+		return fmt.Errorf("Go 安装流程结束，但未检测到 go 命令（请检查 ~/.local/go/bin 是否在 PATH）")
 	}
 	return nil
 }
@@ -252,10 +256,12 @@ func (g *GoInstaller) installWithBrew(version string) error {
 }
 
 func (g *GoInstaller) installFromSourceDarwin(version string) error {
-	ui.Info("正在从官方镜像下载 Go %s...", version)
+	return g.installUserLocal(version, "darwin")
+}
 
-	arch := runtime.GOARCH
-	downloadURL := fmt.Sprintf("https://golang.google.cn/dl/go%s.darwin-%s.tar.gz", version, arch)
+// installUserLocal 将 Go 安装到 ~/.local/go（无需 root）
+func (g *GoInstaller) installUserLocal(version, goos string) error {
+	ui.Info("正在下载 Go %s (%s/%s)...", version, goos, runtime.GOARCH)
 
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -263,62 +269,69 @@ func (g *GoInstaller) installFromSourceDarwin(version string) error {
 	}
 
 	destDir := filepath.Join(home, ".local")
-	_ = os.MkdirAll(destDir, 0755)
-
-	tarPath := filepath.Join(destDir, "go.tar.gz")
-
-	if err := runCommand("curl", "-fsSL", "-o", tarPath, downloadURL); err != nil {
-		return fmt.Errorf("下载 Go 失败: %w", err)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return err
 	}
 
-	ui.Info("正在解压安装...")
+	tarPath := filepath.Join(destDir, "go.tar.gz")
+	urls := goDownloadURLs(version, goos, runtime.GOARCH)
+
+	var downloadErr error
+	for _, downloadURL := range urls {
+		ui.Info("尝试: %s", downloadURL)
+		if err := runCommand("curl", "-fsSL", "--connect-timeout", "30", "--max-time", "600", "-o", tarPath, downloadURL); err != nil {
+			downloadErr = err
+			continue
+		}
+		downloadErr = nil
+		break
+	}
+	if downloadErr != nil {
+		return fmt.Errorf("下载 Go 失败: %w", downloadErr)
+	}
+
+	// 校验 tarball 大小，避免下到 HTML 错误页仍继续解压
+	if st, err := os.Stat(tarPath); err != nil || st.Size() < 1_000_000 {
+		_ = os.Remove(tarPath)
+		return fmt.Errorf("下载的 Go 包无效或过小")
+	}
+
+	ui.Info("正在解压到 ~/.local/go ...")
 	goDir := filepath.Join(destDir, "go")
 	_ = os.RemoveAll(goDir)
 
 	if err := runCommand("tar", "-C", destDir, "-xzf", tarPath); err != nil {
-		os.Remove(tarPath)
+		_ = os.Remove(tarPath)
 		return fmt.Errorf("解压 Go 失败: %w", err)
 	}
-
-	os.Remove(tarPath)
+	_ = os.Remove(tarPath)
 
 	binDir := filepath.Join(goDir, "bin")
+	goBin := filepath.Join(binDir, "go")
+	if runtime.GOOS == "windows" {
+		goBin += ".exe"
+	}
+	if _, err := os.Stat(goBin); err != nil {
+		return fmt.Errorf("解压后未找到 %s", goBin)
+	}
+
 	AddDirToPath(binDir)
-	_ = PersistPathEnv(binDir)
+	if err := PersistPathEnv(binDir); err != nil {
+		ui.Warning("写入 shell PATH 失败: %v（当前进程已临时生效）", err)
+	}
 
 	RecordInstallation("go", "language", version, []string{"~/.local/go"}, []string{"# added by envkit"})
-
-	ui.Success("Go %s 安装成功并已配置环境变量！", version)
+	ui.Success("Go %s 已安装到 ~/.local/go（新终端自动生效 PATH）", version)
 	return nil
 }
 
-func (g *GoInstaller) installFromSource(version string) error {
-	ui.Info("从官方镜像下载 Go %s...", version)
-
-	// 下载 Go 安装包
-	arch := runtime.GOARCH
-	downloadURL := fmt.Sprintf("https://golang.google.cn/dl/go%s.linux-%s.tar.gz", version, arch)
-
-	if err := runCommand("curl", "-fsSL", "-o", "/tmp/go.tar.gz", downloadURL); err != nil {
-		return fmt.Errorf("下载失败: %w", err)
+func goDownloadURLs(version, goos, arch string) []string {
+	name := fmt.Sprintf("go%s.%s-%s.tar.gz", version, goos, arch)
+	return []string{
+		"https://golang.google.cn/dl/" + name,
+		"https://mirrors.aliyun.com/golang/" + name,
+		"https://go.dev/dl/" + name,
 	}
-
-	// 解压安装
-	ui.Info("正在安装...")
-	if err := runCommand("sudo", "tar", "-C", "/usr/local", "-xzf", "/tmp/go.tar.gz"); err != nil {
-		return fmt.Errorf("安装失败: %w", err)
-	}
-
-	// 清理临时文件
-	os.Remove("/tmp/go.tar.gz")
-
-	AddDirToPath("/usr/local/go/bin")
-	_ = PersistPathEnv("/usr/local/go/bin")
-
-	RecordInstallation("go", "language", version, []string{"/usr/local/go"}, []string{"# added by envkit"})
-
-	ui.Success("Go %s 安装成功并已配置环境变量！", version)
-	return nil
 }
 
 func (g *GoInstaller) installWithWinget(version string) error {
@@ -339,7 +352,7 @@ func (g *GoInstaller) GetVersion() string {
 	if err != nil {
 		return ""
 	}
-	return string(output)
+	return strings.TrimSpace(string(output))
 }
 
 // RustInstaller Rust 安装器
@@ -592,6 +605,9 @@ func (b *BunInstaller) Install(version string) error {
 	default:
 		RecordInstallation("bun", "language", version, nil, nil)
 	}
+	if !b.IsInstalled() {
+		return fmt.Errorf("Bun 安装流程结束，但未检测到 bun 命令（请检查 ~/.bun/bin 是否在 PATH，或重新打开终端）")
+	}
 	return nil
 }
 
@@ -656,8 +672,15 @@ func (b *BunInstaller) installWithCurl() error {
 		return err
 	}
 	bunBinDir := filepath.Join(home, ".bun", "bin")
+	bunBin := filepath.Join(bunBinDir, "bun")
+	if _, err := os.Stat(bunBin); err != nil {
+		return fmt.Errorf("Bun 安装脚本结束，但未找到 %s", bunBin)
+	}
 	AddDirToPath(bunBinDir)
-	return PersistPathEnv(bunBinDir)
+	if err := PersistPathEnv(bunBinDir); err != nil {
+		ui.Warning("写入 shell PATH 失败: %v（当前进程已临时生效）", err)
+	}
+	return nil
 }
 
 func (b *BunInstaller) IsInstalled() bool {

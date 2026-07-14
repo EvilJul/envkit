@@ -97,6 +97,10 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.sub != nil {
 			switch msg.String() {
 			case "esc", "q":
+				// 安装进行中禁止直接丢弃子视图（会导致 install goroutine 阻塞/进度泄漏）
+				if b, ok := m.sub.(busyView); ok && b.Busy() {
+					return m, nil
+				}
 				m.sub = nil
 				m.active = viewMenu
 				return m, nil
@@ -190,10 +194,6 @@ func (m rootModel) View() string {
 	s += "\n" + m.menu.View()
 	s += "\n" + renderHelp("↑/↓ 导航  enter 选择  q 退出")
 	return s
-}
-
-type quitter interface {
-	Done() bool
 }
 
 func backKeyHint() string {

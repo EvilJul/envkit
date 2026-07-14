@@ -81,7 +81,10 @@ func runInstallCmd(cmd *cobra.Command, args []string) error {
 		if cfg == nil {
 			return fmt.Errorf("未选择任何有效的组件进行安装")
 		}
-		service.RunInstallation(cfg)
+		result := service.RunInstallation(cfg)
+		if len(result.FailedComponents) > 0 {
+			return result
+		}
 		return nil
 	}
 
@@ -111,7 +114,10 @@ func installFromFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("解析配置文件失败: %w", err)
 	}
-	service.RunInstallation(cfg)
+	result := service.RunInstallation(cfg)
+	if len(result.FailedComponents) > 0 {
+		return result
+	}
 	return nil
 }
 
@@ -145,8 +151,13 @@ func runUninstallCmd(cmd *cobra.Command, args []string) error {
 			ui.Info("操作已取消。")
 			return nil
 		}
+		var errs []string
 		for _, e := range service.UninstallAll() {
 			ui.Error("%v", e)
+			errs = append(errs, e.Error())
+		}
+		if len(errs) > 0 {
+			return fmt.Errorf("卸载过程有错误: %s", strings.Join(errs, "; "))
 		}
 		return nil
 	}

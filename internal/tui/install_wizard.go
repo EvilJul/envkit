@@ -149,7 +149,7 @@ func (m *installWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.width > 0 {
 					m.installProg.onResize(m.width, m.height)
 				}
-				m.installCh = make(chan tea.Msg, 64)
+				m.installCh = make(chan tea.Msg, 256)
 				return m, tea.Batch(m.installProg.Init(), m.beginInstall(), listenInstallMsg(m.installCh))
 			case "n", "N", "esc", "q":
 				if msg.String() == "esc" || msg.String() == "q" {
@@ -254,13 +254,25 @@ func (m *installWizard) View() string {
 		return m.installProg.View()
 
 	case installDone:
-		msg := successStyle.Render("安装完成！")
+		var msg string
 		if len(m.result.FailedComponents) > 0 {
 			msg = warningStyle.Render("部分组件安装失败:")
 			for _, c := range m.result.FailedComponents {
 				msg += "\n  • " + errorStyle.Render(c)
 			}
+			if len(m.result.Succeeded) > 0 {
+				msg += "\n\n" + successStyle.Render("已成功:")
+				for _, c := range m.result.Succeeded {
+					msg += "\n  • " + c
+				}
+			}
+		} else {
+			msg = successStyle.Render("全部安装成功！")
+			for _, c := range m.result.Succeeded {
+				msg += "\n  • " + c
+			}
 		}
+		msg += "\n\n" + mutedStyle.Render("若终端找不到命令，请 source ~/.bashrc 或重开终端")
 		return renderTitle("安装结果", "") + "\n\n" +
 			boxStyle.Render(msg) + "\n\n" +
 			renderHelp("Enter 返回")
@@ -269,3 +281,6 @@ func (m *installWizard) View() string {
 }
 
 func (m *installWizard) Done() bool { return m.done }
+
+// Busy 安装运行中
+func (m *installWizard) Busy() bool { return m.phase == installRunning }

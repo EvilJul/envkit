@@ -2,12 +2,12 @@ package service
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/fusheng/envkit/internal/config"
 	"github.com/fusheng/envkit/internal/detector"
 	"github.com/fusheng/envkit/internal/docker"
 	"github.com/fusheng/envkit/internal/installer"
-	"github.com/fusheng/envkit/internal/mirror"
 	"github.com/fusheng/envkit/internal/progress"
 	"github.com/fusheng/envkit/internal/ui"
 )
@@ -15,11 +15,21 @@ import (
 // InstallResult 安装结果
 type InstallResult struct {
 	FailedComponents []string
+	Succeeded        []string
+}
+
+// Error 实现 error，便于 CLI 非 0 退出
+func (r InstallResult) Error() string {
+	if len(r.FailedComponents) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("安装失败: %s", strings.Join(r.FailedComponents, ", "))
 }
 
 // RunInstallation 执行安装流程（使用当前 ui.Renderer 输出）
 func RunInstallation(cfg *config.Config) InstallResult {
 	var failed []string
+	var succeeded []string
 	total := CountInstallSteps(cfg)
 	if total == 0 {
 		total = 1
@@ -48,11 +58,14 @@ func RunInstallation(cfg *config.Config) InstallResult {
 			langInstaller := installer.GetInstaller(lang.Name)
 			if langInstaller == nil {
 				ui.Warning("不支持的语言: %s", lang.Name)
+				reportInstallError(lang.Name, fmt.Sprintf("不支持的语言: %s", lang.Name))
+				failed = append(failed, lang.Name+"(不支持)")
 				continue
 			}
 			if langInstaller.IsInstalled() {
-				ui.Info("%s 已安装: %s", lang.Name, langInstaller.GetVersion())
+				ui.Info("%s 已安装: %s", lang.Name, strings.TrimSpace(langInstaller.GetVersion()))
 				reportInstallDone(lang.Name, fmt.Sprintf("%s 已安装", lang.Name), step, total)
+				succeeded = append(succeeded, lang.Name)
 			} else {
 				reportInstallStart(lang.Name, fmt.Sprintf("正在安装 %s %s...", lang.Name, lang.Version), step, total)
 				ui.Info("正在安装 %s %s...", lang.Name, lang.Version)
@@ -62,8 +75,17 @@ func RunInstallation(cfg *config.Config) InstallResult {
 					failed = append(failed, lang.Name)
 					continue
 				}
-				ui.Success("%s 安装成功！", lang.Name)
+				// 强制校验：脚本返回 0 但二进制不在 PATH 时不算成功
+				if !langInstaller.IsInstalled() {
+					msg := fmt.Sprintf("%s 安装脚本完成，但当前环境检测不到可执行文件", lang.Name)
+					ui.Error("%s", msg)
+					reportInstallError(lang.Name, msg)
+					failed = append(failed, lang.Name)
+					continue
+				}
+				ui.Success("%s 安装成功: %s", lang.Name, strings.TrimSpace(langInstaller.GetVersion()))
 				reportInstallDone(lang.Name, fmt.Sprintf("%s 安装成功", lang.Name), step, total)
+				succeeded = append(succeeded, lang.Name)
 			}
 			if lang.Mirror != "" {
 				ui.Info("配置 %s 镜像源: %s", lang.Name, lang.Mirror)
@@ -83,11 +105,14 @@ func RunInstallation(cfg *config.Config) InstallResult {
 			toolInstaller := installer.GetToolInstaller(tool)
 			if toolInstaller == nil {
 				ui.Warning("不支持的工具: %s", tool)
+				reportInstallError(tool, fmt.Sprintf("不支持的工具: %s", tool))
+				failed = append(failed, tool+"(不支持)")
 				continue
 			}
 			if toolInstaller.IsInstalled() {
-				ui.Info("%s 已安装: %s", tool, toolInstaller.GetVersion())
+				ui.Info("%s 已安装: %s", tool, strings.TrimSpace(toolInstaller.GetVersion()))
 				reportInstallDone(tool, fmt.Sprintf("%s 已安装", tool), step, total)
+				succeeded = append(succeeded, tool)
 			} else {
 				reportInstallStart(tool, fmt.Sprintf("正在安装 %s...", tool), step, total)
 				ui.Info("正在安装 %s...", tool)
@@ -97,8 +122,16 @@ func RunInstallation(cfg *config.Config) InstallResult {
 					failed = append(failed, tool)
 					continue
 				}
+				if !toolInstaller.IsInstalled() {
+					msg := fmt.Sprintf("%s 安装流程完成，但当前环境检测不到可执行文件", tool)
+					ui.Error("%s", msg)
+					reportInstallError(tool, msg)
+					failed = append(failed, tool)
+					continue
+				}
 				ui.Success("%s 安装成功！", tool)
 				reportInstallDone(tool, fmt.Sprintf("%s 安装成功", tool), step, total)
+				succeeded = append(succeeded, tool)
 			}
 		}
 	}
@@ -108,6 +141,12 @@ func RunInstallation(cfg *config.Config) InstallResult {
 		dockerMgr := docker.NewContainerManager()
 		if !dockerMgr.IsDockerRunning() {
 			ui.Warning("Docker 未运行，跳过数据库容器启动")
+			for _, db := range cfg.Databases {
+				if db.Docker {
+					failed = append(failed, db.Name+"(Docker未运行)")
+					reportInstallError(db.Name, "Docker 未运行")
+				}
+			}
 		} else {
 			for _, db := range cfg.Databases {
 				if !db.Docker {
@@ -128,6 +167,7 @@ func RunInstallation(cfg *config.Config) InstallResult {
 					err = dockerMgr.StartMongoDB(db.Version)
 				default:
 					ui.Warning("不支持的数据库: %s", db.Name)
+					failed = append(failed, db.Name+"(不支持)")
 					continue
 				}
 				if err != nil {
@@ -136,6 +176,7 @@ func RunInstallation(cfg *config.Config) InstallResult {
 					failed = append(failed, db.Name)
 				} else {
 					reportInstallDone(db.Name, fmt.Sprintf("%s 已启动", db.Name), step, total)
+					succeeded = append(succeeded, db.Name)
 				}
 			}
 		}
@@ -143,33 +184,41 @@ func RunInstallation(cfg *config.Config) InstallResult {
 
 	ui.PrintSection("安装完成")
 	if len(failed) > 0 {
-		ui.Warning("部分组件安装或启动失败")
+		ui.Warning("部分组件安装或启动失败: %s", strings.Join(failed, ", "))
+		if len(succeeded) > 0 {
+			ui.Info("已成功: %s", strings.Join(succeeded, ", "))
+		}
 	} else {
 		ui.Success("开发环境配置完成！")
 	}
+	ui.Info("提示: 若新开命令找不到，请执行 source ~/.bashrc 或重开终端（PATH 已写入配置）")
 
+	finalStage := "done"
+	finalMsg := "安装流程结束"
+	if len(failed) > 0 {
+		finalStage = "error"
+		finalMsg = "安装完成（含失败项）: " + strings.Join(failed, ", ")
+	}
 	progress.Report(progress.Event{
 		TaskID:  "install",
-		Stage:   "done",
+		Stage:   finalStage,
 		Percent: 100,
-		Message: "安装流程结束",
+		Message: finalMsg,
 	})
 
-	return InstallResult{FailedComponents: failed}
+	return InstallResult{FailedComponents: failed, Succeeded: succeeded}
 }
 
 func configureMirror(language, mirrorName string) error {
-	registry := mirror.NewRegistry()
+	// 安装配置里 language 名 → mirror 子命令名
+	key := language
 	switch language {
 	case "node", "nodejs":
-		return mirror.NewNPMConfigurator(registry).Configure(mirrorName)
-	case "python":
-		return mirror.NewPipConfigurator(registry).Configure(mirrorName)
-	case "go", "golang":
-		return mirror.NewGoConfigurator(registry).Configure(mirrorName)
-	case "rust":
-		return mirror.NewRustConfigurator(registry).Configure(mirrorName)
-	default:
-		return nil
+		key = "npm"
+	case "python", "python3":
+		key = "pip"
+	case "golang":
+		key = "go"
 	}
+	return ConfigureMirror(key, mirrorName)
 }

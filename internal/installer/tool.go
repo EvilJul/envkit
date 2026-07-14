@@ -843,19 +843,24 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// runCommand 执行外部命令并实时输出，若出错则在 Error 中附加详细的错误内容（包括 stdout/stderr 末尾）
+// runCommand 执行外部命令并捕获输出。
+// TUI 静默模式下禁止写 stdout/stdin，避免破坏 alt-screen 与 sudo 假交互。
 func runCommand(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 
-	// Windows 平台使用编码转换适配控制台
-	stdoutWriter := NewWindowsConsoleWriter(os.Stdout)
-	stderrWriter := NewWindowsConsoleWriter(os.Stderr)
-
-	cmd.Stdout = io.MultiWriter(stdoutWriter, &stdoutBuf)
-	cmd.Stderr = io.MultiWriter(stderrWriter, &stderrBuf)
-	cmd.Stdin = os.Stdin // 允许交互式输入（如 sudo 密码）
+	if ui.IsSilentMode() {
+		cmd.Stdout = &stdoutBuf
+		cmd.Stderr = &stderrBuf
+		cmd.Stdin = nil
+	} else {
+		stdoutWriter := NewWindowsConsoleWriter(os.Stdout)
+		stderrWriter := NewWindowsConsoleWriter(os.Stderr)
+		cmd.Stdout = io.MultiWriter(stdoutWriter, &stdoutBuf)
+		cmd.Stderr = io.MultiWriter(stderrWriter, &stderrBuf)
+		cmd.Stdin = os.Stdin
+	}
 
 	err := cmd.Run()
 	if err != nil {

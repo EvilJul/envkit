@@ -29,10 +29,8 @@ func (t *teaProgressReporter) Report(e prog.Event) {
 	if t == nil || t.ch == nil {
 		return
 	}
-	select {
-	case t.ch <- installProgressEventMsg{evt: e}:
-	default:
-	}
+	// 阻塞发送，避免丢弃 error/done 事件导致 TUI 误报成功
+	t.ch <- installProgressEventMsg{evt: e}
 }
 
 // installProgressModel 安装进度视图
