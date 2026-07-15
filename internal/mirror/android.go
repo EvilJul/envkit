@@ -205,7 +205,9 @@ func (a *AndroidConfigurator) exportEnvVars(mirrorURL string) error {
 	profiles := a.profilePaths(home)
 	for _, p := range profiles {
 		if _, err := os.Stat(p); err == nil {
-			a.appendToFile(p, envLines)
+			if err := a.appendToFile(p, envLines); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

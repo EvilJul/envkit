@@ -31,7 +31,9 @@ jobs:
     - name: Get dependencies
       run: go mod download
 
+    # gofmt is LF-sensitive; Windows checkout with CRLF falsely flags all files.
     - name: Format check
+      if: runner.os == 'Linux'
       run: |
         unformatted=$(gofmt -s -l . | grep -v '^frontend/' | grep -v '^envkit-gui/' || true)
         if [ -n "$unformatted" ]; then
@@ -39,7 +41,6 @@ jobs:
           echo "$unformatted"
           exit 1
         fi
-      shell: bash
 
     - name: Vet
       run: go vet ./cmd/envkit/... ./internal/...
@@ -71,8 +72,6 @@ jobs:
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v6
       with:
-        # Install from source with the job's Go toolchain so the linter
-        # Go version is not older than go.mod (avoids go1.24 < go1.25 errors).
         install-mode: goinstall
         version: latest
         args: --timeout=5m ./cmd/envkit/... ./internal/...

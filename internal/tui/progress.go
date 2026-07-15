@@ -247,13 +247,6 @@ func (m installProgressModel) View() string {
 	return RenderChrome("正在安装", fmt.Sprintf("共 %d 个组件", m.totalSteps), body, nil)
 }
 
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func maxInt(a, b int) int {
 	if a > b {
 		return a

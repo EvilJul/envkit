@@ -146,7 +146,7 @@ func runUninstallCmd(cmd *cobra.Command, args []string) error {
 	if allFlag || (len(args) > 0 && (args[0] == "--all" || args[0] == "-a")) {
 		fmt.Print(ui.Red("警告: 您将卸载通过 EnvKit 安装的所有组件及配置。确定继续吗? (y/N): "))
 		var confirm string
-		fmt.Scanln(&confirm)
+		_, _ = fmt.Scanln(&confirm)
 		if confirm != "y" && confirm != "Y" {
 			ui.Info("操作已取消。")
 			return nil
@@ -263,7 +263,7 @@ func runDockerSubcommand(args []string) error {
 		}
 		fmt.Print("是否同时删除数据卷? (y/N): ")
 		var answer string
-		fmt.Scanln(&answer)
+		_, _ = fmt.Scanln(&answer)
 		removeVolume := answer == "y" || answer == "Y"
 		if err := service.DockerRemove(args[1], removeVolume); err != nil {
 			return err

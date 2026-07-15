@@ -51,8 +51,3 @@ func (m loadingModel) View() string {
 	}
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, content)
 }
-
-func renderLoadingOverlay(title, message string, s spinner.Model) string {
-	return renderTitle(title, "") + "\n\n" +
-		s.View() + " " + subtitleStyle.Render(message) + "\n"
-}

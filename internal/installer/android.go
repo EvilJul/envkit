@@ -21,13 +21,6 @@ const (
 	androidDefaultPlatform            = "android-34"
 )
 
-// Android 镜像源（按优先级排序）
-var androidMirrorURLs = []string{
-	"https://mirrors.cloud.tencent.com/AndroidSDK/",    // 腾讯云
-	"https://mirrors.aliyun.com/android/repository/",   // 阿里云
-	"https://repo.huaweicloud.com/android/repository/", // 华为云
-}
-
 // AndroidInstaller Android SDK 安装器
 type AndroidInstaller struct {
 	cmdlineToolsVersion string

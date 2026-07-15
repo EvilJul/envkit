@@ -258,9 +258,9 @@ func (m *ContainerManager) StopContainer(name string) error {
 
 // RemoveContainer 删除容器
 func (m *ContainerManager) RemoveContainer(name string, removeVolume bool) error {
-	// 先停止容器
+	// 先停止容器（忽略错误：容器可能已经停止）
 	stopCmd := exec.Command("docker", "stop", name)
-	stopCmd.Run() // 忽略错误，容器可能已经停止
+	_ = stopCmd.Run()
 
 	spinner := ui.NewSpinner(fmt.Sprintf("正在删除容器 %s", name))
 	spinner.Start()

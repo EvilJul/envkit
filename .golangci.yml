@@ -2,7 +2,6 @@
 run:
   timeout: 5m
   modules-download-mode: readonly
-  # Match go.mod language version (wails v2.13 requires go 1.25+)
   go: "1.25"
 
 linters:
@@ -18,7 +17,6 @@ issues:
   exclude-dirs:
     - frontend
     - envkit-gui
-  # Root / GUI mains that require a built frontend/dist
   exclude-files:
     - '^main\.go$'
     - '^cmd/gui/.*$'

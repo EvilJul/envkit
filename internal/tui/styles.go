@@ -44,15 +44,6 @@ var (
 	errorStyle   = lipgloss.NewStyle().Foreground(colorError)
 	mutedStyle   = lipgloss.NewStyle().Foreground(colorMuted)
 
-	selectedStyle = lipgloss.NewStyle().
-			Foreground(colorOnPrimary).
-			Background(colorPrimary).
-			Padding(0, 1)
-
-	normalStyle = lipgloss.NewStyle().
-			Foreground(colorText).
-			Padding(0, 1)
-
 	// Card / panel for confirmations and result boxes
 	boxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -141,11 +132,6 @@ func RenderKeyHints(hints []KeyHint) string {
 	return helpStyle.Render(strings.Join(parts, ""))
 }
 
-// renderHelp keeps backward-compatible plain help text.
-func renderHelp(keys string) string {
-	return helpStyle.Render(keys)
-}
-
 // renderTitle builds the brand + page title header (no footer).
 func renderTitle(title, subtitle string) string {
 	brand := brandStyle.Render("EnvKit")
@@ -224,10 +210,6 @@ func RenderChromeSized(title, subtitle, body string, hints []KeyHint, width, hei
 		return top + bodyBlock
 	}
 	return top + bodyBlock + "\n" + footer
-}
-
-func backKeyHint() string {
-	return RenderKeyHints(hintsBack)
 }
 
 // ── Step indicator (multi-step wizards) ────────────────────────────────────

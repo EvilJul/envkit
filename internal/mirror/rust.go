@@ -121,13 +121,17 @@ func (r *RustConfigurator) ConfigureRustup() error {
 		// 写入.bashrc
 		bashrc := filepath.Join(home, ".bashrc")
 		if _, err := os.Stat(bashrc); err == nil {
-			r.appendToFile(bashrc, envVars)
+			if err := r.appendToFile(bashrc, envVars); err != nil {
+				return err
+			}
 		}
 
 		// 写入.zshrc
 		zshrc := filepath.Join(home, ".zshrc")
 		if _, err := os.Stat(zshrc); err == nil {
-			r.appendToFile(zshrc, envVars)
+			if err := r.appendToFile(zshrc, envVars); err != nil {
+				return err
+			}
 		}
 
 		profilePath = bashrc
@@ -150,9 +154,13 @@ func (r *RustConfigurator) appendToFile(path string, lines []string) error {
 	}
 	defer f.Close()
 
-	f.WriteString("\n# Rust镜像源配置\n")
+	if _, err := f.WriteString("\n# Rust镜像源配置\n"); err != nil {
+		return err
+	}
 	for _, line := range lines {
-		f.WriteString(line + "\n")
+		if _, err := f.WriteString(line + "\n"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
