@@ -42,10 +42,13 @@ jobs:
           exit 1
         fi
 
+    # Use bash on all OSes: PowerShell treats "..." as an operator and breaks package paths.
     - name: Vet
+      shell: bash
       run: go vet ./cmd/envkit/... ./internal/...
 
     - name: Test
+      shell: bash
       run: go test -v -race -coverprofile=coverage.out ./cmd/envkit/... ./internal/...
 
     - name: Upload coverage
