@@ -43,10 +43,17 @@ func Report(e Event) {
 	}
 }
 
-// ReportStep 按步骤上报（current/total 转为 0–100 百分比）
+// ReportStep 按步骤上报（current/total 转为 0–100 百分比）。
+// current 表示「已完成」步数（0..total）；开始某步时传 completed=step-1，完成时传 step。
 func ReportStep(taskID, stage, message string, current, total int) {
 	if total <= 0 {
 		total = 1
+	}
+	if current < 0 {
+		current = 0
+	}
+	if current > total {
+		current = total
 	}
 	pct := float64(current) / float64(total) * 100
 	if pct > 100 {
@@ -58,4 +65,18 @@ func ReportStep(taskID, stage, message string, current, total int) {
 		Percent: pct,
 		Message: message,
 	})
+}
+
+// StepPercent 计算步骤进度百分比（与 ReportStep 一致，便于测试）
+func StepPercent(completed, total int) float64 {
+	if total <= 0 {
+		total = 1
+	}
+	if completed < 0 {
+		completed = 0
+	}
+	if completed > total {
+		completed = total
+	}
+	return float64(completed) / float64(total) * 100
 }

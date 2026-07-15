@@ -1,16 +1,14 @@
 package tui
 
 import (
-	"strings"
+	"sort"
 
-	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/fusheng/envkit/internal/cli/service"
 )
 
 type detectView struct {
-	table   table.Model
+	table   styledTableModel
 	report  service.DetectReport
 	loading loadingModel
 	ready   bool
@@ -39,17 +37,25 @@ func (m *detectView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.loading.SetSize(msg.Width, msg.Height)
 		if m.ready {
-			m.table = buildDetectTableFromReport(m.report, m.width)
+			m.table = buildDetectTableFromReport(m.report, m.width, m.height)
 		}
 	case detectLoadedMsg:
 		m.report = msg.report
-		m.table = buildDetectTableFromReport(msg.report, m.width)
+		m.table = buildDetectTableFromReport(msg.report, m.width, m.height)
 		m.ready = true
 	case tea.KeyMsg:
+		if !m.ready {
+			break
+		}
 		switch msg.String() {
 		case "esc", "q":
 			m.done = true
+		case "up", "k":
+			m.table.CursorUp()
+		case "down", "j":
+			m.table.CursorDown()
 		}
 	}
 	var cmds []tea.Cmd
@@ -57,77 +63,137 @@ func (m *detectView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var lcmd tea.Cmd
 		m.loading, lcmd = m.loading.Update(msg)
 		cmds = append(cmds, lcmd)
-	} else if m.table.Rows() != nil {
-		var tcmd tea.Cmd
-		m.table, tcmd = m.table.Update(msg)
-		cmds = append(cmds, tcmd)
 	}
 	return m, tea.Batch(cmds...)
 }
 
 func (m *detectView) View() string {
 	if !m.ready {
+		m.loading.SetSize(m.width, m.height)
 		return m.loading.View()
 	}
-	var b strings.Builder
-	b.WriteString(renderTitle("系统检测", ""))
-	b.WriteString("\n")
-	b.WriteString(m.table.View())
-	b.WriteString("\n")
-	b.WriteString(backKeyHint())
-	return b.String()
+	return RenderChromeSized(
+		"系统检测",
+		"当前机器上的语言、工具与包管理器",
+		m.table.View(),
+		[]KeyHint{
+			{Key: "↑/↓", Desc: "导航"},
+			{Key: "esc/q", Desc: "返回"},
+		},
+		m.width,
+		m.height,
+	)
 }
 
 func (m *detectView) Done() bool { return m.done }
 
-func buildDetectTableFromReport(report service.DetectReport, width int) table.Model {
-	columns := []table.Column{
-		{Title: "类别", Width: 10},
-		{Title: "名称", Width: 12},
-		{Title: "版本", Width: 22},
-		{Title: "状态", Width: 8},
+func buildDetectTableFromReport(report service.DetectReport, width, height int) styledTableModel {
+	cols := []tableColumn{
+		{Title: "名称", Weight: 2, Min: 8},
+		{Title: "版本 / 值", Weight: 4, Min: 10},
+		{Title: "状态", Weight: 2, Min: 8},
 	}
-	var rows []table.Row
-	rows = append(rows, table.Row{"系统", "OS", string(report.System.OS), "—"})
-	rows = append(rows, table.Row{"系统", "架构", string(report.System.Architecture), "—"})
-	if report.System.IsLinux() {
-		rows = append(rows, table.Row{"系统", "发行版", report.System.Distribution, "—"})
+
+	var data []tableDataRow
+
+	// ── 系统 ──
+	data = append(data, tableDataRow{Section: true, Cells: []tableRowCell{{Text: "系统"}}})
+	data = append(data, tableDataRow{Cells: []tableRowCell{
+		{Text: "OS", Bold: true},
+		{Text: string(report.System.OS)},
+		{Text: "—", Kind: statusKindMuted},
+	}})
+	data = append(data, tableDataRow{Cells: []tableRowCell{
+		{Text: "架构", Bold: true},
+		{Text: string(report.System.Architecture)},
+		{Text: "—", Kind: statusKindMuted},
+	}})
+	if report.System.IsLinux() && report.System.Distribution != "" {
+		data = append(data, tableDataRow{Cells: []tableRowCell{
+			{Text: "发行版", Bold: true},
+			{Text: report.System.Distribution},
+			{Text: "—", Kind: statusKindMuted},
+		}})
 	}
-	for name, tool := range report.Languages {
-		if tool.Installed {
-			rows = append(rows, table.Row{"语言", name, tableCell(tool.Version, 18), statusInstalled})
+
+	// ── 语言 ──
+	langNames := sortedKeys(report.Languages)
+	if len(langNames) > 0 {
+		data = append(data, tableDataRow{Section: true, Cells: []tableRowCell{{Text: "语言"}}})
+		for _, name := range langNames {
+			tool := report.Languages[name]
+			if tool == nil || !tool.Installed {
+				continue
+			}
+			st := formatStatusDisplay(statusInstalled)
+			data = append(data, tableDataRow{Cells: []tableRowCell{
+				{Text: name, Bold: true},
+				{Text: tool.Version, Mute: true},
+				{Text: st, Kind: statusKindOK},
+			}})
 		}
 	}
-	for name, tool := range report.Tools {
-		if tool.Installed {
-			rows = append(rows, table.Row{"工具", name, tableCell(tool.Version, 18), statusInstalled})
+
+	// ── 工具 ──
+	toolNames := sortedKeys(report.Tools)
+	installedTools := 0
+	for _, name := range toolNames {
+		if t := report.Tools[name]; t != nil && t.Installed {
+			installedTools++
 		}
 	}
-	for name, tool := range report.Managers {
-		if tool.Installed {
-			rows = append(rows, table.Row{"包管理", name, tableCell(tool.Version, 18), statusAvailable})
+	if installedTools > 0 {
+		data = append(data, tableDataRow{Section: true, Cells: []tableRowCell{{Text: "工具"}}})
+		for _, name := range toolNames {
+			tool := report.Tools[name]
+			if tool == nil || !tool.Installed {
+				continue
+			}
+			st := formatStatusDisplay(statusInstalled)
+			data = append(data, tableDataRow{Cells: []tableRowCell{
+				{Text: name, Bold: true},
+				{Text: tool.Version, Mute: true},
+				{Text: st, Kind: statusKindOK},
+			}})
 		}
 	}
-	return styleDetectTable(rows, columns, width)
+
+	// ── 包管理 ──
+	mgrNames := sortedKeys(report.Managers)
+	installedMgr := 0
+	for _, name := range mgrNames {
+		if t := report.Managers[name]; t != nil && t.Installed {
+			installedMgr++
+		}
+	}
+	if installedMgr > 0 {
+		data = append(data, tableDataRow{Section: true, Cells: []tableRowCell{{Text: "包管理"}}})
+		for _, name := range mgrNames {
+			tool := report.Managers[name]
+			if tool == nil || !tool.Installed {
+				continue
+			}
+			st := formatStatusDisplay(statusAvailable)
+			data = append(data, tableDataRow{Cells: []tableRowCell{
+				{Text: name, Bold: true},
+				{Text: tool.Version, Mute: true},
+				{Text: st, Kind: statusKindWarn},
+			}})
+		}
+	}
+
+	bodyH := height - 10
+	if bodyH < 8 {
+		bodyH = 14
+	}
+	return newStyledTable(cols, data, width, bodyH)
 }
 
-func styleDetectTable(rows []table.Row, columns []table.Column, width int) table.Model {
-	t := table.New(
-		table.WithColumns(columns),
-		table.WithRows(rows),
-		table.WithFocused(true),
-		table.WithHeight(minInt(len(rows)+1, 20)),
-	)
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(colorPrimary).
-		BorderBottom(true).
-		Bold(true)
-	s.Cell = s.Cell.Padding(0, 1)
-	t.SetStyles(s)
-	if width > 0 {
-		t.SetWidth(width - 4)
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
 	}
-	return t
+	sort.Strings(keys)
+	return keys
 }

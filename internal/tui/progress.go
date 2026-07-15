@@ -29,8 +29,21 @@ func (t *teaProgressReporter) Report(e prog.Event) {
 	if t == nil || t.ch == nil {
 		return
 	}
-	// 阻塞发送，避免丢弃 error/done 事件导致 TUI 误报成功
 	t.ch <- installProgressEventMsg{evt: e}
+}
+
+type logLevel int
+
+const (
+	logInfo logLevel = iota
+	logSuccess
+	logWarn
+	logError
+)
+
+type coloredLogLine struct {
+	text  string
+	level logLevel
 }
 
 // installProgressModel 安装进度视图
@@ -38,9 +51,10 @@ type installProgressModel struct {
 	progressBar progress.Model
 	spinner     spinner.Model
 	viewport    viewport.Model
-	logLines    []string
+	logLines    []coloredLogLine
 	currentTask string
 	currentPct  float64
+	stepCurrent int
 	totalSteps  int
 	width       int
 	height      int
@@ -54,13 +68,14 @@ func newInstallProgressModel(totalSteps int) installProgressModel {
 	p := progress.New(progress.WithGradient("#007aff", "#34c759"))
 	p.ShowPercentage = true
 	s := spinner.New()
-	s.Spinner = spinner.Points
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(colorPrimary)
 	return installProgressModel{
 		progressBar: p,
 		spinner:     s,
 		viewport:    viewport.New(60, 8),
 		totalSteps:  totalSteps,
-		logLines:    []string{"准备安装..."},
+		logLines:    []coloredLogLine{{text: "准备安装…", level: logInfo}},
 	}
 }
 
@@ -70,34 +85,105 @@ func (m installProgressModel) Init() tea.Cmd {
 
 func (m *installProgressModel) onResize(w, h int) {
 	m.width, m.height = w, h
-	barW := w - 8
+	barW := w - 10
 	if barW < 20 {
 		barW = 20
 	}
 	m.progressBar.Width = barW
-	m.viewport.Width = w - 4
-	m.viewport.Height = minInt(h-12, 10)
-	if len(m.logLines) > 0 {
-		m.viewport.SetContent(strings.Join(m.logLines, "\n"))
-		m.viewport.GotoBottom()
+	m.viewport.Width = w - 8
+	// reserve header + steps + task + bar + chrome
+	logH := h - 16
+	if logH < 4 {
+		logH = 4
 	}
+	if logH > 16 {
+		logH = 16
+	}
+	m.viewport.Height = logH
+	m.refreshViewport()
 	m.ready = true
 }
 
-func (m *installProgressModel) appendLog(line string) {
-	m.logLines = append(m.logLines, line)
-	if len(m.logLines) > maxInstallLogLines {
-		m.logLines = m.logLines[len(m.logLines)-maxInstallLogLines:]
+func (m *installProgressModel) refreshViewport() {
+	var lines []string
+	for _, l := range m.logLines {
+		lines = append(lines, colorizeLogLine(l))
 	}
-	m.viewport.SetContent(strings.Join(m.logLines, "\n"))
+	m.viewport.SetContent(strings.Join(lines, "\n"))
 	m.viewport.GotoBottom()
 }
 
+func colorizeLogLine(l coloredLogLine) string {
+	prefix := mutedStyle.Render("· ")
+	switch l.level {
+	case logSuccess:
+		return successStyle.Render("✓ ") + l.text
+	case logWarn:
+		return warningStyle.Render("⚠ ") + l.text
+	case logError:
+		return errorStyle.Render("✗ ") + l.text
+	default:
+		return prefix + mutedStyle.Render(l.text)
+	}
+}
+
+func inferLogLevel(stage, message string) logLevel {
+	s := strings.ToLower(stage + " " + message)
+	switch {
+	case strings.Contains(s, "fail") || strings.Contains(s, "error") ||
+		strings.Contains(s, "失败") || strings.Contains(s, "错误") ||
+		strings.Contains(s, "panic"):
+		return logError
+	case strings.Contains(s, "warn") || strings.Contains(s, "跳过") ||
+		strings.Contains(s, "skip") || strings.Contains(s, "警告"):
+		return logWarn
+	case strings.Contains(s, "success") || strings.Contains(s, "done") ||
+		strings.Contains(s, "完成") || strings.Contains(s, "成功") ||
+		strings.Contains(s, "installed"):
+		return logSuccess
+	default:
+		return logInfo
+	}
+}
+
+func (m *installProgressModel) appendLog(line string, level logLevel) {
+	m.logLines = append(m.logLines, coloredLogLine{text: line, level: level})
+	if len(m.logLines) > maxInstallLogLines {
+		m.logLines = m.logLines[len(m.logLines)-maxInstallLogLines:]
+	}
+	m.refreshViewport()
+}
+
 func (m *installProgressModel) applyEvent(evt prog.Event) tea.Cmd {
-	m.currentTask = evt.TaskID
-	m.currentPct = evt.Percent / 100
+	if evt.TaskID != "" {
+		m.currentTask = evt.TaskID
+	}
+	// Percent < 0 表示「仅日志、不改进度」（如 error）
+	if evt.Percent >= 0 {
+		newPct := evt.Percent / 100
+		// 进度只增不减，避免异常事件把条拉回 0
+		if newPct >= m.currentPct || (evt.Stage == "preparing" && evt.TaskID == "install") {
+			m.currentPct = newPct
+		}
+		if m.totalSteps > 0 {
+			completed := int(m.currentPct*float64(m.totalSteps) + 1e-9)
+			switch evt.Stage {
+			case "installing", "starting":
+				// 正在做第 completed+1 步
+				m.stepCurrent = completed + 1
+			default:
+				m.stepCurrent = completed
+			}
+			if m.stepCurrent < 1 {
+				m.stepCurrent = 1
+			}
+			if m.stepCurrent > m.totalSteps {
+				m.stepCurrent = m.totalSteps
+			}
+		}
+	}
 	if evt.Message != "" {
-		m.appendLog(evt.Message)
+		m.appendLog(evt.Message, inferLogLevel(evt.Stage, evt.Message))
 	}
 	return m.progressBar.SetPercent(m.currentPct)
 }
@@ -120,18 +206,45 @@ func (m installProgressModel) Update(msg tea.Msg) (installProgressModel, tea.Cmd
 }
 
 func (m installProgressModel) View() string {
+	steps := []string{"选择", "确认", "执行", "完成"}
+	stepBar := RenderStepIndicator(steps, 2) // running = step 3 (0-based index 2)
+
 	if !m.ready && m.width == 0 {
-		return renderTitle("正在安装", "初始化...") + "\n"
+		body := stepBar + "\n\n" + m.spinner.View() + " " + subtitleStyle.Render("准备中…")
+		return RenderChrome("正在安装", "初始化…", body, nil)
 	}
+
 	task := m.currentTask
 	if task == "" {
 		task = "install"
 	}
-	header := fmt.Sprintf("%s  %s", m.spinner.View(), lipgloss.NewStyle().Foreground(colorPrimary).Render(task))
+	stepLabel := fmt.Sprintf("步骤 %d / %d", maxInt(m.stepCurrent, 1), m.totalSteps)
+	if m.stepCurrent == 0 {
+		stepLabel = fmt.Sprintf("共 %d 个组件", m.totalSteps)
+	}
+
+	taskLine := fmt.Sprintf("%s  %s  %s",
+		m.spinner.View(),
+		brandStyle.Render(task),
+		mutedStyle.Render(stepLabel),
+	)
 	bar := m.progressBar.View()
-	logBox := boxStyle.Width(m.width - 4).Render(m.viewport.View())
-	return renderTitle("正在安装", fmt.Sprintf("共 %d 个组件", m.totalSteps)) + "\n\n" +
-		header + "\n" + bar + "\n\n" + logBox + "\n"
+	pct := int(m.currentPct * 100)
+	pctLine := mutedStyle.Render(fmt.Sprintf("%d%%", pct))
+
+	boxW := m.width - 6
+	if boxW < 20 {
+		boxW = 40
+	}
+	logLabel := mutedStyle.Render("日志")
+	logBox := panelStyle.Width(boxW).Render(m.viewport.View())
+
+	body := stepBar + "\n\n" +
+		taskLine + "  " + pctLine + "\n\n" +
+		bar + "\n\n" +
+		logLabel + "\n" + logBox
+
+	return RenderChrome("正在安装", fmt.Sprintf("共 %d 个组件", m.totalSteps), body, nil)
 }
 
 func minInt(a, b int) int {
@@ -141,11 +254,49 @@ func minInt(a, b int) int {
 	return b
 }
 
-// configureRootListDelegate 配置主菜单 list 样式
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// configureRootListDelegate 配置主菜单 list 样式（现代极简选中态）
 func configureRootListDelegate() list.DefaultDelegate {
 	delegate := list.NewDefaultDelegate()
 	delegate.ShowDescription = true
-	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.Foreground(lipgloss.Color("#007aff"))
-	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.Foreground(lipgloss.Color("#8e8e93"))
+	delegate.SetSpacing(1)
+
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, false, false, true).
+		BorderForeground(colorPrimary).
+		Foreground(colorPrimary).
+		Bold(true).
+		Padding(0, 0, 0, 1)
+	delegate.Styles.SelectedDesc = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, false, false, true).
+		BorderForeground(colorPrimary).
+		Foreground(colorMuted).
+		Padding(0, 0, 0, 1)
+
+	delegate.Styles.NormalTitle = lipgloss.NewStyle().
+		Foreground(colorText).
+		Padding(0, 0, 0, 2)
+	delegate.Styles.NormalDesc = lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Padding(0, 0, 0, 2)
+
+	delegate.Styles.DimmedTitle = lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Padding(0, 0, 0, 2)
+	delegate.Styles.DimmedDesc = lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Padding(0, 0, 0, 2)
+
 	return delegate
+}
+
+// configureWizardListDelegate 配置向导列表样式（与主菜单一致）
+func configureWizardListDelegate() list.DefaultDelegate {
+	return configureRootListDelegate()
 }

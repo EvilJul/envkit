@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -10,12 +9,12 @@ import (
 )
 
 type initWizard struct {
-	list      list.Model
-	done      bool
-	saved     bool
-	errMsg    string
-	width     int
-	height    int
+	list   list.Model
+	done   bool
+	saved  bool
+	errMsg string
+	width  int
+	height int
 }
 
 type templateItem struct {
@@ -36,11 +35,13 @@ func newInitWizard() *initWizard {
 			info:  fmt.Sprintf("%s — %s", t.Name, t.Description),
 		}
 	}
-	delegate := list.NewDefaultDelegate()
+	delegate := configureWizardListDelegate()
 	l := list.New(items, delegate, 40, 14)
-	l.Title = "选择预设模板"
+	l.Title = ""
+	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
+	l.SetShowHelp(false)
 	return &initWizard{list: l}
 }
 
@@ -54,9 +55,10 @@ func (m *initWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetHeight(msg.Height - 8)
 	case initSavedMsg:
 		m.saved = true
-		m.errMsg = successStyle.Render("已生成 dev-env.yaml，运行 envkit install -f dev-env.yaml 开始安装")
+		m.errMsg = "" // success path: empty err
 	case initErrorMsg:
-		m.errMsg = errorStyle.Render(msg.err)
+		m.saved = true
+		m.errMsg = msg.err
 	case tea.KeyMsg:
 		if m.saved {
 			switch msg.String() {
@@ -92,23 +94,21 @@ func (m *initWizard) saveTemplate(index int) tea.Cmd {
 }
 
 func (m *initWizard) View() string {
-	var b strings.Builder
-	b.WriteString(renderTitle("初始化配置", "选择模板生成 dev-env.yaml"))
-	if m.errMsg != "" {
-		b.WriteString("\n")
-		b.WriteString(m.errMsg)
-	}
-	b.WriteString("\n")
-	if !m.saved {
-		b.WriteString(m.list.View())
-	}
-	b.WriteString("\n")
+	steps := []string{"模板", "完成"}
 	if m.saved {
-		b.WriteString(renderHelp("Enter 返回"))
-	} else {
-		b.WriteString(backKeyHint())
+		var banner string
+		if m.errMsg != "" {
+			banner = RenderBanner("error", "生成失败", m.errMsg)
+		} else {
+			banner = RenderBanner("success", "已生成 dev-env.yaml",
+				mutedStyle.Render("运行 envkit install -f dev-env.yaml 开始安装"))
+		}
+		body := RenderStepIndicator(steps, 1) + "\n\n" + banner
+		return RenderChrome("初始化配置", "", body, hintsEnterBack)
 	}
-	return b.String()
+	stepBar := RenderStepIndicator(steps, 0)
+	body := stepBar + "\n\n" + m.list.View()
+	return RenderChrome("初始化配置", "选择模板生成 dev-env.yaml", body, hintsNavSelect)
 }
 
 func (m *initWizard) Done() bool { return m.done }

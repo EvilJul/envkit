@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -60,16 +59,18 @@ func newMirrorWizard(presetLang string) *mirrorWizard {
 }
 
 func buildLangList() list.Model {
- langs := service.MirrorLanguages()
+	langs := service.MirrorLanguages()
 	items := make([]list.Item, len(langs))
 	for i, l := range langs {
 		items[i] = mirrorLangItem{lang: l}
 	}
-	delegate := list.NewDefaultDelegate()
+	delegate := configureWizardListDelegate()
 	l := list.New(items, delegate, 40, 12)
-	l.Title = "选择语言/工具"
+	l.Title = ""
+	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
+	l.SetShowHelp(false)
 	return l
 }
 
@@ -80,11 +81,13 @@ func buildMirrorList(lang string) list.Model {
 	for name, url := range mirrors {
 		items = append(items, mirrorNameItem{name: name, url: url})
 	}
-	delegate := list.NewDefaultDelegate()
+	delegate := configureWizardListDelegate()
 	l := list.New(items, delegate, 40, 12)
-	l.Title = fmt.Sprintf("选择 %s 镜像源", lang)
+	l.Title = ""
+	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
+	l.SetShowHelp(false)
 	return l
 }
 
@@ -98,10 +101,10 @@ func (m *mirrorWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetHeight(msg.Height - 8)
 	case mirrorConfiguredMsg:
 		m.phase = mirrorDone
-		m.okMsg = successStyle.Render("镜像源配置成功！")
+		m.okMsg = "镜像源已写入本地配置。"
 	case mirrorErrorMsg:
 		m.phase = mirrorDone
-		m.errMsg = errorStyle.Render(msg.err)
+		m.errMsg = msg.err
 	case tea.KeyMsg:
 		switch m.phase {
 		case mirrorLang:
@@ -159,21 +162,34 @@ func (m *mirrorWizard) configure(name string) tea.Cmd {
 }
 
 func (m *mirrorWizard) View() string {
+	steps := []string{"语言", "镜像", "完成"}
+
 	switch m.phase {
-	case mirrorLang, mirrorPick:
-		var b strings.Builder
-		b.WriteString(renderTitle("镜像源配置", ""))
-		b.WriteString("\n")
-		b.WriteString(m.list.View())
-		b.WriteString("\n")
-		b.WriteString(backKeyHint())
-		return b.String()
-	case mirrorDone:
-		msg := m.okMsg
-		if m.errMsg != "" {
-			msg = m.errMsg
+	case mirrorLang:
+		stepBar := RenderStepIndicator(steps, 0)
+		body := stepBar + "\n\n" + m.list.View()
+		return RenderChrome("镜像源配置", "选择语言/工具", body, hintsNavSelect)
+	case mirrorPick:
+		stepBar := RenderStepIndicator(steps, 1)
+		sub := "选择镜像源"
+		if m.language != "" {
+			sub = fmt.Sprintf("为 %s 选择镜像源", m.language)
 		}
-		return renderTitle("镜像源", "") + "\n" + msg + "\n" + renderHelp("Enter 返回")
+		body := stepBar + "\n\n" + m.list.View()
+		return RenderChrome("镜像源配置", sub, body, hintsNavSelect)
+	case mirrorDone:
+		stepBar := RenderStepIndicator(steps, 2)
+		var banner string
+		if m.errMsg != "" {
+			banner = RenderBanner("error", "配置失败", m.errMsg)
+		} else {
+			detail := m.okMsg
+			if m.language != "" {
+				detail = mutedStyle.Render("语言/工具: "+m.language) + "\n" + detail
+			}
+			banner = RenderBanner("success", "镜像源配置成功", detail)
+		}
+		return RenderChrome("镜像源", "", stepBar+"\n\n"+banner, hintsEnterBack)
 	}
 	return ""
 }

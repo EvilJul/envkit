@@ -17,18 +17,25 @@ func CountInstallSteps(cfg *config.Config) int {
 }
 
 func reportInstallStart(taskID, message string, step, total int) {
-	progress.ReportStep(taskID, "installing", message, step, total)
+	// 开始第 step 步时进度为已完成 (step-1)/total，避免最后一步一开始就显示 100%
+	completed := step - 1
+	if completed < 0 {
+		completed = 0
+	}
+	progress.ReportStep(taskID, "installing", message, completed, total)
 }
 
 func reportInstallDone(taskID, message string, step, total int) {
+	// 完成第 step 步后进度为 step/total
 	progress.ReportStep(taskID, "done", message, step, total)
 }
 
 func reportInstallError(taskID, message string) {
+	// Percent < 0：不改动总体进度条（避免失败事件把进度打回 0%）
 	progress.Report(progress.Event{
 		TaskID:  taskID,
 		Stage:   "error",
-		Percent: 0,
+		Percent: -1,
 		Message: message,
 	})
 }

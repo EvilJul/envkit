@@ -25,14 +25,14 @@ type uninstallItem struct {
 }
 
 func (i uninstallItem) Title() string {
-	mark := "[ ]"
+	mark := "☐"
 	if i.selected {
-		mark = "[x]"
+		mark = "☑"
 	}
 	return fmt.Sprintf("%s %s (%s)", mark, i.item.Name, i.item.Type)
 }
 
-func (i uninstallItem) FilterValue() string  { return i.item.Name }
+func (i uninstallItem) FilterValue() string { return i.item.Name }
 func (i uninstallItem) Description() string { return i.item.Version + " @ " + i.item.InstalledAt }
 
 type uninstallWizard struct {
@@ -79,6 +79,7 @@ func (m *uninstallWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.loading.SetSize(msg.Width, msg.Height)
 		if m.ready {
 			m.list.SetWidth(msg.Width)
 			m.list.SetHeight(msg.Height - 8)
@@ -95,11 +96,13 @@ func (m *uninstallWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, it := range m.items {
 			listItems[i] = it
 		}
-		delegate := list.NewDefaultDelegate()
+		delegate := configureWizardListDelegate()
 		l := list.New(listItems, delegate, 40, 16)
-		l.Title = "选择要卸载的组件"
+		l.Title = ""
+		l.SetShowTitle(false)
 		l.SetShowStatusBar(false)
 		l.SetFilteringEnabled(false)
+		l.SetShowHelp(false)
 		if m.width > 0 {
 			l.SetWidth(m.width)
 			l.SetHeight(m.height - 8)
@@ -207,53 +210,61 @@ func (m *uninstallWizard) runUninstall() tea.Cmd {
 }
 
 func (m *uninstallWizard) View() string {
+	steps := []string{"选择", "确认", "执行", "完成"}
+
 	if !m.ready {
+		m.loading.SetSize(m.width, m.height)
 		return m.loading.View()
 	}
 	if m.errMsg != "" && len(m.items) == 0 {
-		return renderTitle("卸载组件", "") + "\n" +
-			errorStyle.Render(m.errMsg) + "\n" +
-			backKeyHint()
+		return RenderChrome("卸载组件", "", RenderBanner("error", "加载失败", m.errMsg), hintsBack)
 	}
 	if len(m.items) == 0 {
-		return renderTitle("卸载组件", "") + "\n" +
-			warningStyle.Render("清单中没有通过 EnvKit 安装的组件。") + "\n" +
-			backKeyHint()
+		return RenderChrome("卸载组件", "",
+			RenderBanner("warning", "无可卸载组件", mutedStyle.Render("清单中没有通过 EnvKit 安装的组件。")),
+			hintsBack)
 	}
 	switch m.phase {
 	case uninstallSelect:
-		var b strings.Builder
-		b.WriteString(renderTitle("卸载组件", "空格切换，a 全选，Enter 继续"))
-		if m.errMsg != "" {
-			b.WriteString("\n")
-			b.WriteString(errorStyle.Render(m.errMsg))
-		}
-		b.WriteString("\n")
-		b.WriteString(m.list.View())
-		b.WriteString("\n")
-		b.WriteString(renderHelp("esc/q 返回"))
-		return b.String()
-	case uninstallConfirm:
-		lines := make([]string, len(m.selected))
-		for i, n := range m.selected {
-			lines[i] = "  • " + errorStyle.Render(n)
-		}
-		return renderTitle("确认卸载", "") + "\n" +
-			boxStyle.Render(strings.Join(lines, "\n")) + "\n\n" +
-			"按 Y 确认卸载，N 返回"
-	case uninstallRunning:
-		return m.loading.View()
-	case uninstallDone:
-		msg := successStyle.Render("所选组件已卸载。")
-		if len(m.finishErrs) > 0 {
-			msg = warningStyle.Render("部分卸载失败:")
-			for _, e := range m.finishErrs {
-				msg += "\n  • " + errorStyle.Render(e)
+		stepBar := RenderStepIndicator(steps, 0)
+		n := 0
+		for _, it := range m.items {
+			if it.selected {
+				n++
 			}
 		}
-		return renderTitle("卸载完成", "") + "\n" +
-			boxStyle.Render(msg) + "\n" +
-			renderHelp("Enter 返回")
+		body := stepBar + "\n\n" + m.list.View()
+		if m.errMsg != "" {
+			body = stepBar + "\n\n" + errorStyle.Render(m.errMsg) + "\n\n" + m.list.View()
+		}
+		return RenderChrome("卸载组件", fmt.Sprintf("空格切换 · a 全选 · 已选 %d", n), body, hintsUninstallSelect)
+	case uninstallConfirm:
+		stepBar := RenderStepIndicator(steps, 1)
+		lines := make([]string, len(m.selected))
+		for i, name := range m.selected {
+			lines[i] = errorStyle.Render(name)
+		}
+		body := stepBar + "\n\n" +
+			subtitleStyle.Render("以下组件将被卸载，此操作不可轻易恢复") + "\n\n" +
+			RenderConfirmCard(lines)
+		return RenderChrome("确认卸载", fmt.Sprintf("共 %d 项", len(m.selected)), body, hintsConfirmYN)
+	case uninstallRunning:
+		stepBar := RenderStepIndicator(steps, 2)
+		spin := m.loading.spinner.View() + "  " + subtitleStyle.Render("正在卸载所选组件…")
+		return RenderChrome("卸载组件", "正在执行…", stepBar+"\n\n"+spin, nil)
+	case uninstallDone:
+		stepBar := RenderStepIndicator(steps, 3)
+		var banner string
+		if len(m.finishErrs) > 0 {
+			var detail strings.Builder
+			for _, e := range m.finishErrs {
+				detail.WriteString("  • " + errorStyle.Render(e) + "\n")
+			}
+			banner = RenderBanner("warning", "部分卸载失败", strings.TrimRight(detail.String(), "\n"))
+		} else {
+			banner = RenderBanner("success", "卸载完成", mutedStyle.Render("所选组件已从系统中移除。"))
+		}
+		return RenderChrome("卸载完成", "", stepBar+"\n\n"+banner, hintsEnterBack)
 	}
 	return ""
 }

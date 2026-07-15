@@ -28,9 +28,9 @@ type installItem struct {
 }
 
 func (i installItem) Title() string {
-	mark := "[ ]"
+	mark := "☐"
 	if i.selected {
-		mark = "[x]"
+		mark = "☑"
 	}
 	cat := "工具"
 	switch i.opt.Category {
@@ -45,21 +45,21 @@ func (i installItem) Title() string {
 	return fmt.Sprintf("%s %s (%s)", mark, i.opt.Name, cat)
 }
 
-func (i installItem) FilterValue() string  { return i.opt.Key }
+func (i installItem) FilterValue() string { return i.opt.Key }
 func (i installItem) Description() string { return i.opt.Key + " " + i.opt.Version }
 
 type installWizard struct {
-	phase          installPhase
-	list           list.Model
-	items          []installItem
-	installProg    installProgressModel
-	installCh      chan tea.Msg
-	result         service.InstallResult
-	cfg            *config.Config
-	done           bool
-	errMsg         string
-	width          int
-	height         int
+	phase       installPhase
+	list        list.Model
+	items       []installItem
+	installProg installProgressModel
+	installCh   chan tea.Msg
+	result      service.InstallResult
+	cfg         *config.Config
+	done        bool
+	errMsg      string
+	width       int
+	height      int
 }
 
 func newInstallWizard() *installWizard {
@@ -71,11 +71,13 @@ func newInstallWizard() *installWizard {
 		listItems[i] = items[i]
 	}
 
-	delegate := list.NewDefaultDelegate()
+	delegate := configureWizardListDelegate()
 	l := list.New(listItems, delegate, 40, 20)
-	l.Title = "选择要安装的组件"
+	l.Title = ""
+	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
+	l.SetShowHelp(false)
 
 	return &installWizard{
 		phase: installSelect,
@@ -235,70 +237,84 @@ func (m *installWizard) beginInstall() tea.Cmd {
 	}
 }
 
+func (m *installWizard) selectedCount() int {
+	n := 0
+	for _, it := range m.items {
+		if it.selected {
+			n++
+		}
+	}
+	return n
+}
+
 func (m *installWizard) View() string {
+	steps := []string{"选择", "确认", "执行", "完成"}
+
 	switch m.phase {
 	case installSelect:
-		var b strings.Builder
-		b.WriteString(renderTitle("安装向导", "空格切换选中，Enter 继续"))
+		stepBar := RenderStepIndicator(steps, 0)
+		sub := fmt.Sprintf("空格切换选中 · 已选 %d 项", m.selectedCount())
+		body := stepBar + "\n\n" + m.list.View()
 		if m.errMsg != "" {
-			b.WriteString("\n")
-			b.WriteString(errorStyle.Render(m.errMsg))
+			body = stepBar + "\n\n" + errorStyle.Render(m.errMsg) + "\n\n" + m.list.View()
 		}
-		b.WriteString("\n")
-		b.WriteString(m.list.View())
-		b.WriteString("\n")
-		b.WriteString(backKeyHint())
-		return b.String()
+		return RenderChrome("安装向导", sub, body, hintsMultiSelect)
 
 	case installConfirm:
+		stepBar := RenderStepIndicator(steps, 1)
 		var lines []string
 		for _, lang := range m.cfg.Languages {
-			lines = append(lines, fmt.Sprintf("  • %s %s", lang.Name, lang.Version))
+			ver := lang.Version
+			if ver != "" {
+				lines = append(lines, fmt.Sprintf("%s  %s", lang.Name, mutedStyle.Render(ver)))
+			} else {
+				lines = append(lines, lang.Name)
+			}
 		}
 		for _, tool := range m.cfg.Tools {
-			lines = append(lines, fmt.Sprintf("  • %s", tool))
+			lines = append(lines, tool)
 		}
 		for _, db := range m.cfg.Databases {
-			lines = append(lines, fmt.Sprintf("  • %s %s (Docker)", db.Name, db.Version))
+			lines = append(lines, fmt.Sprintf("%s  %s  %s", db.Name, mutedStyle.Render(db.Version), mutedStyle.Render("Docker")))
 		}
-		body := strings.Join(lines, "\n")
-		return renderTitle("确认安装", "") + "\n" +
-			boxStyle.Render(body) + "\n\n" +
-			"按 Y 开始安装，N 返回\n" +
-			backKeyHint()
+		body := stepBar + "\n\n" +
+			subtitleStyle.Render("即将安装以下组件") + "\n\n" +
+			RenderConfirmCard(lines)
+		return RenderChrome("确认安装", fmt.Sprintf("共 %d 项", len(lines)), body, hintsConfirmYN)
 
 	case installRunning:
 		return m.installProg.View()
 
 	case installDone:
-		var msg string
+		stepBar := RenderStepIndicator(steps, 3)
+		var banner string
+		var detail strings.Builder
 		if len(m.result.FailedComponents) > 0 {
-			msg = warningStyle.Render("部分组件安装失败:")
 			for _, c := range m.result.FailedComponents {
-				msg += "\n  • " + errorStyle.Render(c)
+				detail.WriteString("  • " + errorStyle.Render(c) + "\n")
 			}
 			if len(m.result.Succeeded) > 0 {
-				msg += "\n\n" + successStyle.Render("已成功:")
+				detail.WriteString("\n" + successStyle.Render("已成功:") + "\n")
 				for _, c := range m.result.Succeeded {
-					msg += "\n  • " + c
+					detail.WriteString("  • " + c + "\n")
 				}
 			}
+			banner = RenderBanner("warning", "部分组件安装失败", strings.TrimRight(detail.String(), "\n"))
 		} else if len(m.result.Succeeded) == 0 {
-			msg = warningStyle.Render("没有组件被安装（可能已全部跳过或结果为空）")
+			banner = RenderBanner("warning", "没有组件被安装", mutedStyle.Render("可能已全部跳过或结果为空"))
 		} else {
-			msg = successStyle.Render("全部安装成功！")
 			for _, c := range m.result.Succeeded {
-				msg += "\n  • " + c
+				detail.WriteString("  • " + c + "\n")
 			}
+			hint := "若终端找不到命令，请 source ~/.bashrc 或重开终端"
+			if runtime.GOOS == "windows" {
+				hint = "请重新打开终端使 PATH 生效"
+			}
+			detail.WriteString("\n" + mutedStyle.Render(hint))
+			banner = RenderBanner("success", "全部安装成功！", strings.TrimRight(detail.String(), "\n"))
 		}
-		if runtime.GOOS == "windows" {
-			msg += "\n\n" + mutedStyle.Render("请重新打开终端使 PATH 生效")
-		} else {
-			msg += "\n\n" + mutedStyle.Render("若终端找不到命令，请 source ~/.bashrc 或重开终端")
-		}
-		return renderTitle("安装结果", "") + "\n\n" +
-			boxStyle.Render(msg) + "\n\n" +
-			renderHelp("Enter 返回")
+		body := stepBar + "\n\n" + banner
+		return RenderChrome("安装结果", "", body, hintsEnterBack)
 	}
 	return ""
 }

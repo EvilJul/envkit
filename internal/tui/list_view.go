@@ -3,19 +3,18 @@ package tui
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/fusheng/envkit/internal/cli/service"
 )
 
 type listView struct {
-	table   table.Model
+	table   styledTableModel
 	rows    []service.CatalogRow
 	loading loadingModel
 	ready   bool
 	done    bool
 	width   int
+	height  int
 }
 
 func newListView() *listView {
@@ -37,18 +36,26 @@ type listLoadedMsg struct {
 func (m *listView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
+		m.width, m.height = msg.Width, msg.Height
+		m.loading.SetSize(msg.Width, msg.Height)
 		if m.ready {
-			m.table = buildCatalogTable(m.rows, msg.Width)
+			m.table = buildCatalogTable(m.rows, msg.Width, msg.Height)
 		}
 	case listLoadedMsg:
 		m.rows = msg.rows
-		m.table = buildCatalogTable(msg.rows, m.width)
+		m.table = buildCatalogTable(msg.rows, m.width, m.height)
 		m.ready = true
 	case tea.KeyMsg:
+		if !m.ready {
+			break
+		}
 		switch msg.String() {
 		case "esc", "q":
 			m.done = true
+		case "up", "k":
+			m.table.CursorUp()
+		case "down", "j":
+			m.table.CursorDown()
 		}
 	}
 	var cmds []tea.Cmd
@@ -56,10 +63,6 @@ func (m *listView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var lcmd tea.Cmd
 		m.loading, lcmd = m.loading.Update(msg)
 		cmds = append(cmds, lcmd)
-	} else {
-		var tcmd tea.Cmd
-		m.table, tcmd = m.table.Update(msg)
-		cmds = append(cmds, tcmd)
 	}
 	return m, tea.Batch(cmds...)
 }
@@ -68,57 +71,76 @@ func (m *listView) View() string {
 	if !m.ready {
 		return m.loading.View()
 	}
-	var b strings.Builder
-	b.WriteString(renderTitle("组件列表", "支持安装的环境与工具"))
-	b.WriteString("\n")
-	b.WriteString(m.table.View())
-	b.WriteString("\n")
-	b.WriteString(backKeyHint())
-	return b.String()
+	return RenderChromeSized(
+		"组件列表",
+		"支持安装的环境与工具及当前状态",
+		m.table.View(),
+		[]KeyHint{
+			{Key: "↑/↓", Desc: "导航"},
+			{Key: "esc/q", Desc: "返回"},
+		},
+		m.width,
+		m.height,
+	)
 }
 
 func (m *listView) Done() bool { return m.done }
 
-func buildCatalogTable(rows []service.CatalogRow, width int) table.Model {
-	columns := []table.Column{
-		{Title: "名称", Width: 12},
-		{Title: "版本", Width: 10},
-		{Title: "状态", Width: 16},
-		{Title: "说明", Width: 30},
+func buildCatalogTable(rows []service.CatalogRow, width, height int) styledTableModel {
+	cols := []tableColumn{
+		{Title: "名称", Weight: 2, Min: 8},
+		{Title: "版本", Weight: 2, Min: 6},
+		{Title: "状态", Weight: 3, Min: 10},
+		{Title: "说明", Weight: 5, Min: 10},
 	}
-	var tableRows []table.Row
+
+	// Group by category with stable order
+	order := []string{"language", "tool", "database"}
+	labels := map[string]string{
+		"language": "语言",
+		"tool":     "工具",
+		"database": "数据库",
+	}
+	grouped := map[string][]service.CatalogRow{}
 	for _, r := range rows {
-		status := r.Status
-		if status == "" {
-			status = "—"
-		} else if status != statusNotInstalled {
-			status = tableCell("✓ "+status, 14)
-		} else {
-			status = "✗ " + statusNotInstalled
+		cat := r.Category
+		if cat == "" {
+			cat = "tool"
 		}
-		tableRows = append(tableRows, table.Row{
-			r.Name,
-			tableCell(r.Version, 8),
-			status,
-			tableCell(r.Description, 28),
+		grouped[cat] = append(grouped[cat], r)
+	}
+
+	var data []tableDataRow
+	for _, cat := range order {
+		items := grouped[cat]
+		if len(items) == 0 {
+			continue
+		}
+		data = append(data, tableDataRow{
+			Section: true,
+			Cells:   []tableRowCell{{Text: labels[cat]}},
 		})
+		for _, r := range items {
+			st := formatStatusDisplay(r.Status)
+			// databases often have empty status
+			if r.Category == "database" && strings.TrimSpace(r.Status) == "" {
+				st = formatStatusDisplay("")
+			}
+			kind := classifyStatus(st)
+			data = append(data, tableDataRow{
+				Cells: []tableRowCell{
+					{Text: r.Name, Bold: true},
+					{Text: r.Version, Mute: r.Version == ""},
+					{Text: st, Kind: kind},
+					{Text: r.Description, Mute: true},
+				},
+			})
+		}
 	}
-	t := table.New(
-		table.WithColumns(columns),
-		table.WithRows(tableRows),
-		table.WithFocused(true),
-		table.WithHeight(minInt(len(tableRows)+1, 22)),
-	)
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(colorPrimary).
-		BorderBottom(true).
-		Bold(true)
-	s.Cell = s.Cell.Padding(0, 1)
-	t.SetStyles(s)
-	if width > 0 {
-		t.SetWidth(width - 4)
+
+	bodyH := height - 10
+	if bodyH < 8 {
+		bodyH = 14
 	}
-	return t
+	return newStyledTable(cols, data, width, bodyH)
 }

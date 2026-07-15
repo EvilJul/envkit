@@ -51,22 +51,25 @@ type dockerMenuModel struct {
 	focusIndex int
 	done       bool
 	result     string
+	resultOK   bool
 	width      int
 	height     int
 }
 
 func newDockerMenu() *dockerMenuModel {
 	items := []list.Item{
-		dockerMenuItem{actionList, "列出容器", "查看运行中的 Docker 容器"},
-		dockerMenuItem{actionStart, "启动数据库", "启动 postgres/redis/mysql/mongodb"},
-		dockerMenuItem{actionStop, "停止容器", "按容器名停止"},
-		dockerMenuItem{actionRemove, "删除容器", "按容器名删除（可选删卷）"},
+		dockerMenuItem{actionList, "📋  列出容器", "查看运行中的 Docker 容器"},
+		dockerMenuItem{actionStart, "▶  启动数据库", "启动 postgres/redis/mysql/mongodb"},
+		dockerMenuItem{actionStop, "⏹  停止容器", "按容器名停止"},
+		dockerMenuItem{actionRemove, "🗑  删除容器", "按容器名删除（可选删卷）"},
 	}
-	delegate := list.NewDefaultDelegate()
+	delegate := configureWizardListDelegate()
 	l := list.New(items, delegate, 40, 12)
-	l.Title = "Docker 管理"
+	l.Title = ""
+	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
+	l.SetShowHelp(false)
 
 	db := textinput.New()
 	db.Placeholder = "postgres | redis | mysql | mongodb"
@@ -90,14 +93,17 @@ func (m *dockerMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.loading.SetSize(msg.Width, msg.Height)
 		m.list.SetWidth(msg.Width)
 		m.list.SetHeight(msg.Height - 8)
 	case dockerActionDoneMsg:
 		m.phase = dockerResult
 		if msg.err != nil {
-			m.result = errorStyle.Render(msg.err.Error())
+			m.result = msg.err.Error()
+			m.resultOK = false
 		} else {
-			m.result = successStyle.Render(msg.message)
+			m.result = msg.message
+			m.resultOK = true
 		}
 	case tea.KeyMsg:
 		switch m.phase {
@@ -263,30 +269,38 @@ func (m *dockerMenuModel) runRemove(removeVolume bool) tea.Cmd {
 func (m *dockerMenuModel) View() string {
 	switch m.phase {
 	case dockerMenuPhase:
-		var b strings.Builder
-		b.WriteString(renderTitle("Docker 管理", ""))
-		b.WriteString("\n")
-		b.WriteString(m.list.View())
-		b.WriteString("\n")
-		b.WriteString(backKeyHint())
-		return b.String()
+		return RenderChrome("Docker 管理", "数据库容器快捷操作", m.list.View(), hintsNavSelect)
 	case dockerStartForm:
-		return renderTitle("启动数据库", "") + "\n\n" +
-			"数据库: " + m.dbInput.View() + "\n" +
-			"版本:   " + m.verInput.View() + "\n\n" +
-			renderHelp("Tab 切换字段  Enter 启动  esc 返回")
+		body := "数据库: " + m.dbInput.View() + "\n" +
+			"版本:   " + m.verInput.View()
+		return RenderChrome("启动数据库", "填写数据库类型与版本", body, []KeyHint{
+			{Key: "tab", Desc: "切换字段"},
+			{Key: "enter", Desc: "启动"},
+			{Key: "esc", Desc: "返回"},
+		})
 	case dockerStopForm:
-		return renderTitle("停止容器", "") + "\n\n" +
-			"容器名: " + m.nameInput.View() + "\n\n" +
-			renderHelp("Enter 停止  esc 返回")
+		body := "容器名: " + m.nameInput.View()
+		return RenderChrome("停止容器", "", body, []KeyHint{
+			{Key: "enter", Desc: "停止"},
+			{Key: "esc", Desc: "返回"},
+		})
 	case dockerRemoveForm:
-		return renderTitle("删除容器", "") + "\n\n" +
-			"容器名: " + m.nameInput.View() + "\n\n" +
-			renderHelp("Enter 删除（不删卷）  esc 返回")
+		body := "容器名: " + m.nameInput.View()
+		return RenderChrome("删除容器", "默认不删除数据卷", body, []KeyHint{
+			{Key: "enter", Desc: "删除"},
+			{Key: "esc", Desc: "返回"},
+		})
 	case dockerRunning:
+		m.loading.SetSize(m.width, m.height)
 		return m.loading.View()
 	case dockerResult:
-		return renderTitle("操作结果", "") + "\n\n" + m.result + "\n" + renderHelp("Enter 返回")
+		var body string
+		if m.resultOK {
+			body = RenderBanner("success", "操作成功", m.result)
+		} else {
+			body = RenderBanner("error", "操作失败", m.result)
+		}
+		return RenderChrome("操作结果", "", body, hintsEnterBack)
 	}
 	return ""
 }
