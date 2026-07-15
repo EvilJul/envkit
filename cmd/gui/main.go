@@ -12,8 +12,8 @@ import (
 
 	"github.com/fusheng/envkit/internal/appapi"
 	"github.com/fusheng/envkit/internal/detector"
-	"github.com/fusheng/envkit/internal/installer"
 	"github.com/fusheng/envkit/internal/docker"
+	"github.com/fusheng/envkit/internal/installer"
 	"github.com/fusheng/envkit/internal/mirror"
 )
 

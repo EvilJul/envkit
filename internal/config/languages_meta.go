@@ -23,7 +23,7 @@ func LanguageCatalog() []LanguageCatalogEntry {
 	return []LanguageCatalogEntry{
 		{
 			Name: "node", DisplayName: "Node.js", Icon: "node",
-			Description: "基于 Chrome V8 的 JavaScript 运行时",
+			Description:    "基于 Chrome V8 的 JavaScript 运行时",
 			DefaultVersion: "20.11.1", DefaultMirror: "npmmirror",
 			MirrorOptions: []string{"npmmirror", "official"},
 			AvailableVersions: []LanguageVersionOption{
@@ -34,7 +34,7 @@ func LanguageCatalog() []LanguageCatalogEntry {
 		},
 		{
 			Name: "python", DisplayName: "Python", Icon: "python",
-			Description: "解释型、动态类型、多范式语言",
+			Description:    "解释型、动态类型、多范式语言",
 			DefaultVersion: "3.12.1", DefaultMirror: "tsinghua",
 			MirrorOptions: []string{"tsinghua", "aliyun", "ustc", "official"},
 			AvailableVersions: []LanguageVersionOption{
@@ -45,7 +45,7 @@ func LanguageCatalog() []LanguageCatalogEntry {
 		},
 		{
 			Name: "go", DisplayName: "Go", Icon: "go",
-			Description: "静态类型编译语言，擅长并发与系统编程",
+			Description:    "静态类型编译语言，擅长并发与系统编程",
 			DefaultVersion: "1.22.0", DefaultMirror: "goproxy",
 			MirrorOptions: []string{"goproxy", "aliyun", "official"},
 			AvailableVersions: []LanguageVersionOption{
@@ -56,7 +56,7 @@ func LanguageCatalog() []LanguageCatalogEntry {
 		},
 		{
 			Name: "rust", DisplayName: "Rust", Icon: "rust",
-			Description: "注重安全与并发的系统级语言",
+			Description:    "注重安全与并发的系统级语言",
 			DefaultVersion: "stable", DefaultMirror: "ustc",
 			MirrorOptions: []string{"ustc", "tsinghua", "official"},
 			AvailableVersions: []LanguageVersionOption{
@@ -67,7 +67,7 @@ func LanguageCatalog() []LanguageCatalogEntry {
 		},
 		{
 			Name: "java", DisplayName: "Java", Icon: "java",
-			Description: "广泛使用的企业级面向对象语言",
+			Description:    "广泛使用的企业级面向对象语言",
 			DefaultVersion: "21", DefaultMirror: "aliyun",
 			MirrorOptions: []string{"aliyun", "tsinghua", "official"},
 			AvailableVersions: []LanguageVersionOption{
@@ -78,7 +78,7 @@ func LanguageCatalog() []LanguageCatalogEntry {
 		},
 		{
 			Name: "bun", DisplayName: "Bun", Icon: "bun",
-			Description: "新一代一体化 JavaScript 运行时与工具链",
+			Description:    "新一代一体化 JavaScript 运行时与工具链",
 			DefaultVersion: "latest", DefaultMirror: "npmmirror",
 			MirrorOptions: []string{"npmmirror", "official"},
 			AvailableVersions: []LanguageVersionOption{

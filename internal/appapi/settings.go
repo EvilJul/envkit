@@ -8,30 +8,30 @@ import (
 
 // Settings 应用设置（与前端 Settings.svelte 字段对齐）
 type Settings struct {
-	LaunchAtStartup  bool   `json:"launchAtStartup"`
-	MinimizeToTray   bool   `json:"minimizeToTray"`
-	DefaultNpmMirror string `json:"defaultNpmMirror"`
-	DefaultPipMirror string `json:"defaultPipMirror"`
-	DefaultGoMirror  string `json:"defaultGoMirror"`
-	AndroidMirror    string `json:"androidMirror"`
-	GradleMirror     string `json:"gradleMirror"`
-	ShowExpertOptions bool  `json:"showExpertOptions"`
-	InstallDir       string `json:"installDir"`
-	LogLevel         string `json:"logLevel"`
+	LaunchAtStartup   bool   `json:"launchAtStartup"`
+	MinimizeToTray    bool   `json:"minimizeToTray"`
+	DefaultNpmMirror  string `json:"defaultNpmMirror"`
+	DefaultPipMirror  string `json:"defaultPipMirror"`
+	DefaultGoMirror   string `json:"defaultGoMirror"`
+	AndroidMirror     string `json:"androidMirror"`
+	GradleMirror      string `json:"gradleMirror"`
+	ShowExpertOptions bool   `json:"showExpertOptions"`
+	InstallDir        string `json:"installDir"`
+	LogLevel          string `json:"logLevel"`
 }
 
 func defaultSettings() Settings {
 	return Settings{
-		LaunchAtStartup:  false,
-		MinimizeToTray:   true,
-		DefaultNpmMirror: "npmmirror",
-		DefaultPipMirror: "tsinghua",
-		DefaultGoMirror:  "goproxy",
-		AndroidMirror:    "aliyun",
-		GradleMirror:     "aliyun",
+		LaunchAtStartup:   false,
+		MinimizeToTray:    true,
+		DefaultNpmMirror:  "npmmirror",
+		DefaultPipMirror:  "tsinghua",
+		DefaultGoMirror:   "goproxy",
+		AndroidMirror:     "aliyun",
+		GradleMirror:      "aliyun",
 		ShowExpertOptions: false,
-		InstallDir:       "/usr/local",
-		LogLevel:         "Info",
+		InstallDir:        "/usr/local",
+		LogLevel:          "Info",
 	}
 }
 

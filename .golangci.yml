@@ -1,0 +1,24 @@
+# golangci-lint config for EnvKit CLI packages
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+  # Match go.mod language version (wails v2.13 requires go 1.25+)
+  go: "1.25"
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+issues:
+  exclude-dirs:
+    - frontend
+    - envkit-gui
+  # Root / GUI mains that require a built frontend/dist
+  exclude-files:
+    - '^main\.go$'
+    - '^cmd/gui/.*$'

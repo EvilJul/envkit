@@ -70,7 +70,7 @@ func (n *NodeInstaller) installWithFnm(version string) error {
 		if err := runCommand("sh", "-c", "curl -fsSL https://fnm.vercel.app/install | bash"); err != nil {
 			return fmt.Errorf("安装 fnm 失败: %w", err)
 		}
-		
+
 		if err := locateAndAddFnmToPath(); err != nil {
 			return err
 		}
@@ -190,7 +190,7 @@ func (p *PythonInstaller) installWithUv(version string) error {
 		if err := runCommand("sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"); err != nil {
 			return fmt.Errorf("安装 uv 失败: %w", err)
 		}
-		
+
 		if err := locateAndAddUvToPath(); err != nil {
 			return err
 		}

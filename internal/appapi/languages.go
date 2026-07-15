@@ -10,15 +10,15 @@ import (
 
 // Language GUI 语言卡片数据（与前端 Languages.svelte 对齐）
 type Language struct {
-	Name              string                       `json:"name"`
-	DisplayName       string                       `json:"displayName"`
-	Description       string                       `json:"description"`
-	Icon              string                       `json:"icon"`
-	Version           string                       `json:"version"`
-	Installed         bool                         `json:"installed"`
-	Mirror            string                       `json:"mirror"`
+	Name              string                         `json:"name"`
+	DisplayName       string                         `json:"displayName"`
+	Description       string                         `json:"description"`
+	Icon              string                         `json:"icon"`
+	Version           string                         `json:"version"`
+	Installed         bool                           `json:"installed"`
+	Mirror            string                         `json:"mirror"`
 	AvailableVersions []config.LanguageVersionOption `json:"availableVersions"`
-	MirrorOptions     []string                     `json:"mirrorOptions"`
+	MirrorOptions     []string                       `json:"mirrorOptions"`
 }
 
 // GetLanguages 检测本机语言环境并合并目录元数据

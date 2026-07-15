@@ -16,5 +16,5 @@ func (SilentRenderer) Warning(format string, args ...interface{}) {}
 func (SilentRenderer) Info(format string, args ...interface{})    {}
 func (SilentRenderer) NewSpinner(message string) SpinnerHandle    { return noopSpinnerHandle{} }
 
-func (noopSpinnerHandle) Stop()                          {}
+func (noopSpinnerHandle) Stop()                        {}
 func (noopSpinnerHandle) UpdateMessage(message string) {}

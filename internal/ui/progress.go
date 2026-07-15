@@ -103,7 +103,7 @@ func (s *Spinner) Stop() {
 		return
 	}
 	s.running = false
-	time.Sleep(150 * time.Millisecond) // 等待最后一帧显示
+	time.Sleep(150 * time.Millisecond)               // 等待最后一帧显示
 	fmt.Print("\r" + strings.Repeat(" ", 50) + "\r") // 清除行
 }
 

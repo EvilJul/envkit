@@ -28,14 +28,14 @@ type MirrorOption struct {
 }
 
 var mirrorDisplayLabels = map[string]string{
-	"aliyun":   "阿里云",
-	"tencent":  "腾讯云",
-	"huawei":   "华为云",
-	"tsinghua": "清华大学",
-	"official": "Official (官方源)",
+	"aliyun":    "阿里云",
+	"tencent":   "腾讯云",
+	"huawei":    "华为云",
+	"tsinghua":  "清华大学",
+	"official":  "Official (官方源)",
 	"npmmirror": "npmmirror (淘宝镜像)",
-	"goproxy":  "goproxy.cn",
-	"ustc":     "中科大",
+	"goproxy":   "goproxy.cn",
+	"ustc":      "中科大",
 }
 
 func mirrorLabel(name string) string {

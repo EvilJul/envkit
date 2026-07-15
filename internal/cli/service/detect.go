@@ -6,10 +6,10 @@ import (
 
 // DetectReport 环境检测报告
 type DetectReport struct {
-	System     detector.SystemInfo
-	Languages  map[string]*detector.Tool
-	Tools      map[string]*detector.Tool
-	Managers   map[string]*detector.Tool
+	System    detector.SystemInfo
+	Languages map[string]*detector.Tool
+	Tools     map[string]*detector.Tool
+	Managers  map[string]*detector.Tool
 }
 
 // DetectEnvironment 检测系统环境

@@ -6,14 +6,17 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+# CLI packages only — GUI entrypoints embed frontend/dist and are built by
+# the desktop workflow after the frontend is generated.
+
 jobs:
   test:
     name: Test
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go: ['1.21', '1.22', '1.23']
 
     steps:
     - name: Checkout code
@@ -22,28 +25,30 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: ${{ matrix.go }}
+        go-version-file: go.mod
+        cache: true
 
     - name: Get dependencies
       run: go mod download
 
     - name: Format check
       run: |
-        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+        unformatted=$(gofmt -s -l . | grep -v '^frontend/' | grep -v '^envkit-gui/' || true)
+        if [ -n "$unformatted" ]; then
           echo "Code is not formatted:"
-          gofmt -s -l .
+          echo "$unformatted"
           exit 1
         fi
       shell: bash
 
     - name: Vet
-      run: go vet ./...
+      run: go vet ./cmd/envkit/... ./internal/...
 
     - name: Test
-      run: go test -v -race -coverprofile=coverage.out ./...
+      run: go test -v -race -coverprofile=coverage.out ./cmd/envkit/... ./internal/...
 
     - name: Upload coverage
-      if: matrix.os == 'ubuntu-latest' && matrix.go == '1.23'
+      if: matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v3
       with:
         file: ./coverage.out
@@ -60,13 +65,17 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version-file: go.mod
+        cache: true
 
     - name: golangci-lint
-      uses: golangci/golangci-lint-action@v4
+      uses: golangci/golangci-lint-action@v6
       with:
+        # Install from source with the job's Go toolchain so the linter
+        # Go version is not older than go.mod (avoids go1.24 < go1.25 errors).
+        install-mode: goinstall
         version: latest
-        args: --timeout=5m
+        args: --timeout=5m ./cmd/envkit/... ./internal/...
 
   build:
     name: Build
@@ -80,7 +89,8 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version-file: go.mod
+        cache: true
 
     - name: Build
       run: go build -v ./cmd/envkit
