@@ -144,6 +144,14 @@ func StartDatabaseWithProgress(name, version string, rep progress.Reporter) erro
 		return err
 	}
 
+	if err := ValidateDatabaseName(name); err != nil {
+		progress.Report(progress.Event{TaskID: name, Stage: "error", Percent: 0, Message: err.Error()})
+		return err
+	}
+	if version == "" {
+		version = "latest"
+	}
+
 	progress.Report(progress.Event{TaskID: name, Stage: "starting", Percent: 50, Message: "正在启动容器..."})
 	var err error
 	switch name {

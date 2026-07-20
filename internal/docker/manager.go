@@ -272,7 +272,7 @@ func (m *ContainerManager) RemoveContainer(name string, removeVolume bool) error
 		return fmt.Errorf("删除容器失败: %w", err)
 	}
 
-	// 删除数据卷
+	// 删除数据卷（容器名 envkit-postgres → 卷名 envkit-postgres-data）
 	if removeVolume {
 		volumeName := name + "-data"
 		volumeCmd := exec.Command("docker", "volume", "rm", volumeName)
@@ -288,12 +288,23 @@ func (m *ContainerManager) RemoveContainer(name string, removeVolume bool) error
 // 辅助方法
 
 func (m *ContainerManager) containerExists(name string) bool {
-	cmd := exec.Command("docker", "ps", "-a", "--filter", "name="+name, "--format", "{{.Names}}")
+	// name= 过滤器是子串匹配，需逐行精确比较，避免 envkit-postgres-backup 等误匹配
+	cmd := exec.Command("docker", "ps", "-a", "--filter", "name=^/"+name+"$", "--format", "{{.Names}}")
 	output, err := cmd.Output()
 	if err != nil {
-		return false
+		// 部分 Docker 版本不支持正则锚点，回退到精确行匹配
+		cmd = exec.Command("docker", "ps", "-a", "--filter", "name="+name, "--format", "{{.Names}}")
+		output, err = cmd.Output()
+		if err != nil {
+			return false
+		}
 	}
-	return strings.TrimSpace(string(output)) == name
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.TrimSpace(line) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *ContainerManager) startContainer(name string) error {

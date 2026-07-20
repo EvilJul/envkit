@@ -40,12 +40,7 @@ type Language = appapi.Language
 
 type Tool = appapi.Tool
 
-type Database struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Version string `json:"version"`
-	Status  string `json:"status"`
-}
+type Database = appapi.Database
 
 type Stack struct {
 	Name        string   `json:"name"`
@@ -150,8 +145,7 @@ func (a *App) ResetSettings() Settings {
 }
 
 func (a *App) GetDatabases() []Database {
-	// TODO: 实现 Docker 容器列表获取
-	return []Database{}
+	return appapi.GetDatabases()
 }
 
 func (a *App) StartDatabase(name string, version string) error {
@@ -171,6 +165,11 @@ func (a *App) GetStacks() []Stack {
 	return []Stack{}
 }
 
+// stackContainers 技术栈对应的 envkit 容器名（完整编排未实现的栈不在此表）
+var stackContainers = map[string][]string{
+	"django": {"envkit-postgres", "envkit-redis"},
+}
+
 func (a *App) StartStack(name string) error {
 	dockerMgr := docker.NewContainerManager()
 	if !dockerMgr.IsDockerRunning() {
@@ -178,36 +177,8 @@ func (a *App) StartStack(name string) error {
 	}
 
 	switch name {
-	case "lamp":
-		// 启动 Apache + MySQL + PHP
-		if err := dockerMgr.StartMySQL("8.0", "mysql"); err != nil {
-			return err
-		}
-		// TODO: 启动 Apache + PHP 容器
-		return nil
-	case "lemp":
-		// 启动 Nginx + MySQL + PHP
-		if err := dockerMgr.StartMySQL("8.0", "mysql"); err != nil {
-			return err
-		}
-		// TODO: 启动 Nginx + PHP 容器
-		return nil
-	case "mean":
-		// 启动 MongoDB + Express + Node.js
-		if err := dockerMgr.StartMongoDB("6.0"); err != nil {
-			return err
-		}
-		// TODO: 启动 Express + Node.js 容器
-		return nil
-	case "mern":
-		// 启动 MongoDB + Express + React + Node.js
-		if err := dockerMgr.StartMongoDB("6.0"); err != nil {
-			return err
-		}
-		// TODO: 启动 MERN 应用容器
-		return nil
 	case "django":
-		// 启动 PostgreSQL + Redis + Python
+		// 仅启动 Django 常用数据库依赖（PostgreSQL + Redis）
 		if err := dockerMgr.StartPostgreSQL("16", "postgres"); err != nil {
 			return err
 		}
@@ -215,24 +186,33 @@ func (a *App) StartStack(name string) error {
 			return err
 		}
 		return nil
-	case "laravel":
-		// 启动 Nginx + MySQL + Redis + PHP
-		if err := dockerMgr.StartMySQL("8.0", "mysql"); err != nil {
-			return err
-		}
-		if err := dockerMgr.StartRedis("7"); err != nil {
-			return err
-		}
-		// TODO: 启动 Nginx + PHP 容器
-		return nil
+	case "lamp", "lemp", "mean", "mern", "laravel":
+		// 避免假成功：完整应用容器编排尚未实现
+		return fmt.Errorf("技术栈 '%s' 的完整编排尚未实现，请在 Database 页单独启动所需数据库", name)
 	default:
 		return fmt.Errorf("不支持的技术栈: %s", name)
 	}
 }
 
 func (a *App) StopStack(name string) error {
-	// TODO: 实现停止技术栈
-	return fmt.Errorf("功能开发中")
+	containers, ok := stackContainers[name]
+	if !ok {
+		return fmt.Errorf("技术栈 '%s' 不支持一键停止（或尚未实现），请在 Database 页单独操作容器", name)
+	}
+	dockerMgr := docker.NewContainerManager()
+	if !dockerMgr.IsDockerRunning() {
+		return fmt.Errorf("Docker 未运行，请先启动 Docker")
+	}
+	var errs []string
+	for _, c := range containers {
+		if err := dockerMgr.StopContainer(c); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", c, err))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("部分容器停止失败: %s", strings.Join(errs, "; "))
+	}
+	return nil
 }
 
 func (a *App) GetProjectTemplates() []ProjectTemplate {
@@ -302,28 +282,20 @@ func (a *App) CreateEnvFromTemplate(projectPath string, fileName string, templat
 }
 
 func (a *App) GetEnvVariables() map[string]interface{} {
-	homeDir, _ := os.UserHomeDir()
-
-	// 检测当前 shell
 	shell := detectShell()
+	configFile := userShellConfigFile(shell)
 
-	// 获取配置文件路径
-	var configFile string
-	if shell == "zsh" {
-		configFile = filepath.Join(homeDir, ".zshrc")
-	} else {
-		configFile = filepath.Join(homeDir, ".bash_profile")
-	}
-
-	// 解析用户配置文件
 	userVars := parseEnvFile(configFile)
-
-	// 解析系统配置文件
 	systemVars := parseEnvFile("/etc/profile")
 
-	// 获取 PATH 变量
 	pathValue := os.Getenv("PATH")
-	pathEntries := strings.Split(pathValue, ":")
+	sep := pathListSeparator()
+	var pathEntries []string
+	if pathValue == "" {
+		pathEntries = []string{}
+	} else {
+		pathEntries = strings.Split(pathValue, sep)
+	}
 
 	return map[string]interface{}{
 		"user":   userVars,
@@ -335,12 +307,56 @@ func (a *App) GetEnvVariables() map[string]interface{} {
 
 func detectShell() string {
 	shell := os.Getenv("SHELL")
+	base := filepath.Base(shell)
+	switch base {
+	case "zsh":
+		return "zsh"
+	case "bash":
+		return "bash"
+	case "fish":
+		return "fish"
+	}
 	if strings.Contains(shell, "zsh") {
 		return "zsh"
-	} else if strings.Contains(shell, "bash") {
+	}
+	if strings.Contains(shell, "bash") {
 		return "bash"
 	}
-	return "zsh"
+	// Linux 默认多为 bash；macOS 多为 zsh
+	if _, err := os.Stat("/bin/zsh"); err == nil && filepath.Base(os.Getenv("SHELL")) == "zsh" {
+		return "zsh"
+	}
+	return "bash"
+}
+
+// userShellConfigFile 返回用户级 shell 配置文件路径（Linux bash 优先 .bashrc）
+func userShellConfigFile(shell string) string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	switch shell {
+	case "zsh":
+		return filepath.Join(homeDir, ".zshrc")
+	case "fish":
+		return filepath.Join(homeDir, ".config", "fish", "config.fish")
+	default:
+		// bash：Linux 交互式 shell 读 .bashrc；.bash_profile 仅登录 shell
+		bashrc := filepath.Join(homeDir, ".bashrc")
+		bashProfile := filepath.Join(homeDir, ".bash_profile")
+		if _, err := os.Stat(bashrc); err == nil {
+			return bashrc
+		}
+		if _, err := os.Stat(bashProfile); err == nil {
+			return bashProfile
+		}
+		return bashrc
+	}
+}
+
+func pathListSeparator() string {
+	// 与 os.PathListSeparator 一致，避免硬编码 ':' 导致 Windows 错误
+	return string(os.PathListSeparator)
 }
 
 func parseEnvFile(filePath string) []map[string]string {
@@ -391,31 +407,39 @@ func getScopeFromPath(filePath string) string {
 }
 
 func (a *App) SetEnvVariable(key string, value string, scope string) error {
-	homeDir, _ := os.UserHomeDir()
-	shell := detectShell()
+	if key == "" {
+		return fmt.Errorf("环境变量名不能为空")
+	}
+	// 防止通过变量名注入破坏配置文件正则/内容
+	if !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(key) {
+		return fmt.Errorf("非法的环境变量名: %s", key)
+	}
 
 	var configFile string
 	if scope == "user" {
-		if shell == "zsh" {
-			configFile = filepath.Join(homeDir, ".zshrc")
-		} else {
-			configFile = filepath.Join(homeDir, ".bash_profile")
-		}
+		configFile = userShellConfigFile(detectShell())
 	} else {
 		configFile = "/etc/profile"
 	}
+	if configFile == "" {
+		return fmt.Errorf("无法确定 shell 配置文件路径")
+	}
 
-	// 读取现有内容
 	content, err := os.ReadFile(configFile)
 	if err != nil {
-		// 文件不存在，创建新文件
+		if !os.IsNotExist(err) {
+			return err
+		}
 		content = []byte("")
 	}
 
-	lines := strings.Split(string(content), "\n")
-	exportLine := fmt.Sprintf("export %s=\"%s\"", key, value)
-	varRegex := regexp.MustCompile(fmt.Sprintf(`^\s*export\s+%s\s*=`, key))
+	// 转义写入值中的双引号与反斜杠
+	safeValue := strings.ReplaceAll(value, `\`, `\\`)
+	safeValue = strings.ReplaceAll(safeValue, `"`, `\"`)
+	exportLine := fmt.Sprintf("export %s=\"%s\"", key, safeValue)
+	varRegex := regexp.MustCompile(fmt.Sprintf(`^\s*export\s+%s\s*=`, regexp.QuoteMeta(key)))
 
+	lines := strings.Split(string(content), "\n")
 	found := false
 	for i, line := range lines {
 		if varRegex.MatchString(line) {
@@ -424,26 +448,28 @@ func (a *App) SetEnvVariable(key string, value string, scope string) error {
 			break
 		}
 	}
-
 	if !found {
 		lines = append(lines, exportLine)
 	}
 
-	newContent := strings.Join(lines, "\n")
-	return os.WriteFile(configFile, []byte(newContent), 0644)
+	// 确保目录存在（如 fish config）
+	if err := os.MkdirAll(filepath.Dir(configFile), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(configFile, []byte(strings.Join(lines, "\n")), 0644)
 }
 
 func (a *App) DeleteEnvVariable(key string, scope string) error {
-	homeDir, _ := os.UserHomeDir()
-	shell := detectShell()
+	if key == "" {
+		return fmt.Errorf("环境变量名不能为空")
+	}
+	if !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(key) {
+		return fmt.Errorf("非法的环境变量名: %s", key)
+	}
 
 	var configFile string
 	if scope == "user" {
-		if shell == "zsh" {
-			configFile = filepath.Join(homeDir, ".zshrc")
-		} else {
-			configFile = filepath.Join(homeDir, ".bash_profile")
-		}
+		configFile = userShellConfigFile(detectShell())
 	} else {
 		configFile = "/etc/profile"
 	}
@@ -453,18 +479,15 @@ func (a *App) DeleteEnvVariable(key string, scope string) error {
 		return err
 	}
 
+	varRegex := regexp.MustCompile(fmt.Sprintf(`^\s*export\s+%s\s*=`, regexp.QuoteMeta(key)))
 	lines := strings.Split(string(content), "\n")
-	varRegex := regexp.MustCompile(fmt.Sprintf(`^\s*export\s+%s\s*=`, key))
-
-	newLines := []string{}
+	newLines := make([]string, 0, len(lines))
 	for _, line := range lines {
 		if !varRegex.MatchString(line) {
 			newLines = append(newLines, line)
 		}
 	}
-
-	newContent := strings.Join(newLines, "\n")
-	return os.WriteFile(configFile, []byte(newContent), 0644)
+	return os.WriteFile(configFile, []byte(strings.Join(newLines, "\n")), 0644)
 }
 
 func (a *App) GetShellConfig() string {

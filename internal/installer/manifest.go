@@ -84,6 +84,8 @@ func SaveManifest(m *Manifest) error {
 
 // RecordInstallation 记录一次成功安装；保存失败返回 error
 func RecordInstallation(name string, itemType string, version string, paths []string, shellLines []string) error {
+	name = NormalizeComponentName(name)
+
 	m, err := LoadManifest()
 	if err != nil {
 		return err
@@ -118,6 +120,14 @@ func RecordInstallation(name string, itemType string, version string, paths []st
 	}
 
 	return SaveManifest(m)
+}
+
+// recordInstall 安装成功后写入清单；失败时返回包装错误，避免静默丢失导致无法卸载
+func recordInstall(name, itemType, version string, paths, shellLines []string) error {
+	if err := RecordInstallation(name, itemType, version, paths, shellLines); err != nil {
+		return fmt.Errorf("%s 已安装，但写入清单失败（后续卸载可能不可用）: %w", name, err)
+	}
+	return nil
 }
 
 // CleanShellConfigs 清理 shell 配置文件中与 keywords 匹配的行
@@ -196,14 +206,48 @@ func CleanShellConfigs(keywords []string, stripConda bool) error {
 	return lastErr
 }
 
+// NormalizeComponentName 统一组件别名到清单键（安装/卸载对齐）
+func NormalizeComponentName(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "code":
+		return "vscode"
+	case "nodejs":
+		return "node"
+	case "python3":
+		return "python"
+	case "golang":
+		return "go"
+	case "jdk":
+		return "java"
+	case "conda":
+		return "miniconda"
+	case "android-sdk":
+		return "android"
+	case "esp-idf":
+		return "espidf"
+	default:
+		return name
+	}
+}
+
 // UninstallComponent 卸载单个组件；任一步失败则返回 error
 func UninstallComponent(name string) error {
+	name = NormalizeComponentName(name)
+
 	m, err := LoadManifest()
 	if err != nil {
 		return fmt.Errorf("加载清单失败: %w", err)
 	}
 
 	item, exists := m.Items[name]
+	if !exists {
+		// 兼容历史清单可能用 code 记录 VS Code
+		if alt, ok := m.Items["code"]; ok && name == "vscode" {
+			item = alt
+			exists = true
+			name = "code"
+		}
+	}
 	if !exists {
 		return fmt.Errorf("清单中未记录组件 '%s' 的安装信息，无法通过 EnvKit 自动卸载", name)
 	}

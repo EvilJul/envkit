@@ -66,9 +66,11 @@
   const TOOL_DESCRIPTIONS: Record<string, string> = {
     git: '分布式版本控制系统',
     docker: '容器化应用打包与运行时',
-    make: '构建自动化工具',
-    cmake: '跨平台构建系统生成器',
-    curl: '命令行数据传输工具',
+    vscode: 'Visual Studio Code 编辑器',
+    miniconda: 'Miniconda 科学计算环境',
+    kubectl: 'Kubernetes 命令行工具',
+    minikube: '本地 Kubernetes 集群',
+    espidf: 'ESP-IDF 物联网开发框架',
     android: 'Android 应用开发 SDK'
   };
 

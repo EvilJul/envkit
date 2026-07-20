@@ -30,13 +30,12 @@
   const SUCCESS_HOLD_MS = 1200;
   const ERROR_HOLD_MS = 3000;
 
+  // 仅列出后端 StartDatabase 实际支持的数据库，避免假按钮
   const availableDatabases = [
     { name: 'postgres', displayName: 'PostgreSQL', defaultVersion: '16', description: '强大的开源关系型数据库' },
     { name: 'redis', displayName: 'Redis', defaultVersion: '7', description: '高性能内存键值数据库' },
     { name: 'mysql', displayName: 'MySQL', defaultVersion: '8.0', description: '最流行的开源关系型数据库' },
-    { name: 'mongodb', displayName: 'MongoDB', defaultVersion: '6.0', description: '文档型 NoSQL 数据库' },
-    { name: 'mariadb', displayName: 'MariaDB', defaultVersion: '10.11', description: 'MySQL 兼容的开源分支' },
-    { name: 'clickhouse', displayName: 'ClickHouse', defaultVersion: '23.12', description: '列式 OLAP 数据库' }
+    { name: 'mongodb', displayName: 'MongoDB', defaultVersion: '6.0', description: '文档型 NoSQL 数据库' }
   ];
 
   onMount(async () => {
@@ -229,7 +228,7 @@
     </div>
 
     <div class="add-container">
-      <button class="btn-primary" on:click={() => showStartModal = true} disabled={loading}>
+      <button class="btn-primary" on:click={() => openStartModal(availableDatabases[0])} disabled={loading}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="12" y1="5" x2="12" y2="19"/>
           <line x1="5" y1="12" x2="19" y2="12"/>

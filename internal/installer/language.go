@@ -47,9 +47,13 @@ func (n *NodeInstaller) Install(version string) error {
 	}
 	switch runtime.GOOS {
 	case "linux":
-		_ = RecordInstallation("node", "language", version, []string{"~/.fnm", "~/.local/share/fnm"}, []string{"# envkit:node", "fnm"})
+		if err := recordInstall("node", "language", version, []string{"~/.fnm", "~/.local/share/fnm"}, []string{"# envkit:node", "fnm"}); err != nil {
+			return err
+		}
 	default:
-		_ = RecordInstallation("node", "language", version, nil, []string{"# envkit:node"})
+		if err := recordInstall("node", "language", version, nil, []string{"# envkit:node"}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -168,9 +172,13 @@ func (p *PythonInstaller) Install(version string) error {
 	}
 	switch runtime.GOOS {
 	case "linux":
-		_ = RecordInstallation("python", "language", version, []string{"~/.local/bin/uv", "~/.local/bin/uvx", "~/.local/share/uv"}, []string{"# envkit:python"})
+		if err := recordInstall("python", "language", version, []string{"~/.local/bin/uv", "~/.local/bin/uvx", "~/.local/share/uv"}, []string{"# envkit:python"}); err != nil {
+			return err
+		}
 	default:
-		_ = RecordInstallation("python", "language", version, nil, []string{"# envkit:python"})
+		if err := recordInstall("python", "language", version, nil, []string{"# envkit:python"}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -303,7 +311,9 @@ func (g *GoInstaller) installWithBrew(version string) error {
 		return g.installFromSourceDarwin(version)
 	}
 	locateAndAddBrewGoToPath(brewVersion)
-	_ = RecordInstallation("go", "language", version, nil, []string{"# added by envkit"})
+	if err := recordInstall("go", "language", version, nil, []string{"# envkit:go"}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -372,7 +382,9 @@ func (g *GoInstaller) installUserLocal(version, goos string) error {
 		ui.Warning("写入 shell PATH 失败: %v（当前进程已临时生效）", err)
 	}
 
-	_ = RecordInstallation("go", "language", version, []string{"~/.local/go"}, []string{"# added by envkit"})
+	if err := recordInstall("go", "language", version, []string{"~/.local/go"}, []string{"# envkit:go"}); err != nil {
+		return err
+	}
 	ui.Success("Go %s 已安装到 ~/.local/go（新终端自动生效 PATH）", version)
 	return nil
 }
@@ -391,7 +403,9 @@ func (g *GoInstaller) installWithWinget(version string) error {
 	// 先静默安装最新版，失败则回退用户级 zip（类似 Linux 的 ~/.local/go）。
 	err := installWithWinget("GoLang.Go")
 	if err == nil {
-		_ = RecordInstallation("go", "language", version, nil, []string{"# added by envkit"})
+		if err := recordInstall("go", "language", version, nil, []string{"# envkit:go"}); err != nil {
+			return err
+		}
 		return nil
 	}
 	ui.Warning("通过 winget 安装 Go 失败 (%v)，正在尝试用户级 zip 安装...", err)
@@ -464,7 +478,9 @@ func (g *GoInstaller) installUserLocalWindows(version string) error {
 		ui.Warning("写入 PATH 失败: %v（当前进程已临时生效）", err)
 	}
 
-	_ = RecordInstallation("go", "language", version, []string{"~/.local/go"}, []string{"# added by envkit"})
+	if err := recordInstall("go", "language", version, []string{"~/.local/go"}, []string{"# envkit:go"}); err != nil {
+		return err
+	}
 	ui.Success("Go %s 已安装到 ~/.local/go", version)
 	return nil
 }
@@ -543,7 +559,9 @@ func (r *RustInstaller) Install(version string) error {
 		return fmt.Errorf("Rust 安装完成但未检测到 rustc 命令")
 	}
 	paths := []string{"~/.cargo", "~/.rustup"}
-	_ = RecordInstallation("rust", "language", version, paths, []string{"# envkit:rust"})
+	if err := recordInstall("rust", "language", version, paths, []string{"# envkit:rust"}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -639,9 +657,13 @@ func (j *JavaInstaller) Install(version string) error {
 	}
 	switch runtime.GOOS {
 	case "darwin", "linux":
-		_ = RecordInstallation("java", "language", version, []string{"~/.sdkman"}, []string{"# envkit:java", "SDKMAN_DIR", "sdkman-init.sh"})
+		if err := recordInstall("java", "language", version, []string{"~/.sdkman"}, []string{"# envkit:java", "SDKMAN_DIR", "sdkman-init.sh"}); err != nil {
+			return err
+		}
 	default:
-		_ = RecordInstallation("java", "language", version, nil, []string{"# envkit:java"})
+		if err := recordInstall("java", "language", version, nil, []string{"# envkit:java"}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -766,9 +788,13 @@ func (b *BunInstaller) Install(version string) error {
 	}
 	switch runtime.GOOS {
 	case "darwin", "linux":
-		_ = RecordInstallation("bun", "language", version, []string{"~/.bun"}, []string{"# bun", "BUN_INSTALL"})
+		if err := recordInstall("bun", "language", version, []string{"~/.bun"}, []string{"# bun", "BUN_INSTALL"}); err != nil {
+			return err
+		}
 	default:
-		_ = RecordInstallation("bun", "language", version, nil, nil)
+		if err := recordInstall("bun", "language", version, nil, nil); err != nil {
+			return err
+		}
 	}
 	if !b.IsInstalled() {
 		return fmt.Errorf("Bun 安装流程结束，但未检测到 bun 命令（请检查 ~/.bun/bin 是否在 PATH，或重新打开终端）")

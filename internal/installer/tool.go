@@ -46,7 +46,9 @@ func (g *GitInstaller) Install() error {
 	if !g.IsInstalled() {
 		return fmt.Errorf("Git 安装完成但未检测到 git 命令")
 	}
-	_ = RecordInstallation("git", "tool", "latest", nil, []string{"# envkit:git"})
+	if err := recordInstall("git", "tool", "latest", nil, []string{"# envkit:git"}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -156,7 +158,9 @@ func (d *DockerInstaller) installOnLinux() error {
 		return fmt.Errorf("Docker 安装流程结束但未检测到 docker 命令")
 	}
 	ui.Success("Docker 安装成功！")
-	_ = RecordInstallation("docker", "tool", "latest", nil, []string{"# envkit:docker"})
+	if err := recordInstall("docker", "tool", "latest", nil, []string{"# envkit:docker"}); err != nil {
+		return err
+	}
 	ui.Info("提示: 运行 'sudo usermod -aG docker $USER' 将当前用户添加到 docker 组")
 	return nil
 }
@@ -202,9 +206,13 @@ func (v *VSCodeInstaller) Install() error {
 	}
 	switch runtime.GOOS {
 	case "darwin":
-		_ = RecordInstallation("vscode", "tool", "stable", []string{"/Applications/Visual Studio Code.app", "~/.local/bin/code", "/usr/local/bin/code"}, []string{"# envkit:vscode"})
+		if err := recordInstall("vscode", "tool", "stable", []string{"/Applications/Visual Studio Code.app", "~/.local/bin/code", "/usr/local/bin/code"}, []string{"# envkit:vscode"}); err != nil {
+			return err
+		}
 	default:
-		_ = RecordInstallation("vscode", "tool", "stable", nil, []string{"# envkit:vscode"})
+		if err := recordInstall("vscode", "tool", "stable", nil, []string{"# envkit:vscode"}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -495,7 +503,9 @@ func (m *MinicondaInstaller) Install() error {
 		return fmt.Errorf("Miniconda 安装完成但未检测到 conda 命令（请检查 PATH 或重开终端）")
 	}
 
-	_ = RecordInstallation("miniconda", "tool", "latest", []string{"~/miniconda3", "~/.condarc"}, []string{"# >>> conda initialize >>>", "# added by envkit"})
+	if err := recordInstall("miniconda", "tool", "latest", []string{"~/miniconda3", "~/.condarc"}, []string{"# >>> conda initialize >>>", "# envkit:miniconda"}); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -655,9 +665,13 @@ func (k *KubectlInstaller) Install() error {
 	}
 	switch runtime.GOOS {
 	case "darwin", "linux":
-		_ = RecordInstallation("kubectl", "tool", "v1.30.0", []string{"~/.local/bin/kubectl"}, []string{"# envkit:kubectl"})
+		if err := recordInstall("kubectl", "tool", "v1.30.0", []string{"~/.local/bin/kubectl"}, []string{"# envkit:kubectl"}); err != nil {
+			return err
+		}
 	default:
-		_ = RecordInstallation("kubectl", "tool", "v1.30.0", nil, []string{"# envkit:kubectl"})
+		if err := recordInstall("kubectl", "tool", "v1.30.0", nil, []string{"# envkit:kubectl"}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -757,9 +771,13 @@ func (m *MinikubeInstaller) Install() error {
 	}
 	switch runtime.GOOS {
 	case "darwin", "linux":
-		_ = RecordInstallation("minikube", "tool", "latest", []string{"~/.local/bin/minikube"}, []string{"# envkit:minikube"})
+		if err := recordInstall("minikube", "tool", "latest", []string{"~/.local/bin/minikube"}, []string{"# envkit:minikube"}); err != nil {
+			return err
+		}
 	default:
-		_ = RecordInstallation("minikube", "tool", "latest", nil, []string{"# envkit:minikube"})
+		if err := recordInstall("minikube", "tool", "latest", nil, []string{"# envkit:minikube"}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -843,7 +861,9 @@ func (e *EspIdfInstaller) Install() error {
 	if !e.IsInstalled() {
 		return fmt.Errorf("ESP-IDF/EIM 安装完成但未检测到 eim 命令")
 	}
-	_ = RecordInstallation("espidf", "tool", "latest", []string{"~/.espressif"}, []string{"# envkit:espidf", ".espressif/export.sh"})
+	if err := recordInstall("espidf", "tool", "latest", []string{"~/.espressif"}, []string{"# envkit:espidf", ".espressif/export.sh"}); err != nil {
+		return err
+	}
 	return nil
 }
 

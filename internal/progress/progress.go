@@ -1,5 +1,7 @@
 package progress
 
+import "sync"
+
 // Event 任务进度事件（TUI / Wails / CLI 共用）
 type Event struct {
 	TaskID  string  `json:"taskId"`
@@ -18,10 +20,15 @@ type NopReporter struct{}
 
 func (NopReporter) Report(Event) {}
 
-var defaultReporter Reporter = NopReporter{}
+var (
+	reporterMu      sync.RWMutex
+	defaultReporter Reporter = NopReporter{}
+)
 
 // SetReporter 设置全局 reporter，返回上一个 reporter 便于 defer 恢复
 func SetReporter(r Reporter) Reporter {
+	reporterMu.Lock()
+	defer reporterMu.Unlock()
 	old := defaultReporter
 	if r == nil {
 		defaultReporter = NopReporter{}
@@ -33,13 +40,18 @@ func SetReporter(r Reporter) Reporter {
 
 // GetReporter 返回当前 reporter
 func GetReporter() Reporter {
+	reporterMu.RLock()
+	defer reporterMu.RUnlock()
 	return defaultReporter
 }
 
 // Report 向当前 reporter 发送事件
 func Report(e Event) {
-	if defaultReporter != nil {
-		defaultReporter.Report(e)
+	reporterMu.RLock()
+	r := defaultReporter
+	reporterMu.RUnlock()
+	if r != nil {
+		r.Report(e)
 	}
 }
 

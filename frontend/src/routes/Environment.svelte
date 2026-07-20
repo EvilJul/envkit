@@ -102,14 +102,24 @@
     loading = false;
   }
 
+  function pathSeparator(): string {
+    // Windows 使用 ';'，Unix 使用 ':'
+    // 通过已有 PATH 条目粗略判断；后端写入时仍以本机 os.PathListSeparator 为准
+    if (pathEntries.some((p) => p.includes('\\') || /^[A-Za-z]:/.test(p))) {
+      return ';';
+    }
+    return ':';
+  }
+
   async function addToPath() {
     const path = prompt('输入要添加到 PATH 的目录路径：');
     if (!path) return;
 
     loading = true;
     try {
-      const currentPath = pathEntries.join(':');
-      const newPath = `${currentPath}:${path}`;
+      const sep = pathSeparator();
+      const currentPath = pathEntries.filter(Boolean).join(sep);
+      const newPath = currentPath ? `${currentPath}${sep}${path}` : path;
       await SetEnvVariable('PATH', newPath, 'user');
       await loadVariables();
       alert('添加成功！\n\n注意：需要重新打开终端才能生效。');

@@ -92,7 +92,9 @@ func (a *AndroidInstaller) Install() error {
 		"ANDROID_HOME",
 		"ANDROID_SDK_ROOT",
 	}
-	_ = RecordInstallation("android", "tool", a.cmdlineToolsVersion, paths, shellLines)
+	if err := recordInstall("android", "tool", a.cmdlineToolsVersion, paths, shellLines); err != nil {
+		return err
+	}
 
 	ui.Success("Android SDK 安装完成！")
 	if runtime.GOOS == "windows" {
