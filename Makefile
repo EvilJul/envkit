@@ -18,8 +18,10 @@ help: ## 显示帮助信息
 # 构建
 build: ## 构建当前平台二进制文件
 	@echo "🔨 构建 $(APP_NAME)..."
-	@go build -ldflags="-s -w -X main.version=$(VERSION)" -o $(APP_NAME) $(MAIN_FILE)
+	@GIT_SHORT=$$(git rev-parse --short HEAD 2>/dev/null || echo dev); \
+	go build -ldflags="-s -w -X github.com/fusheng/envkit/internal/cli.Version=$(VERSION)+$$GIT_SHORT" -o $(APP_NAME) $(MAIN_FILE)
 	@echo "✅ 构建完成: ./$(APP_NAME)"
+	@./$(APP_NAME) version 2>/dev/null || true
 
 build-all: ## 构建所有平台二进制文件
 	@./build.sh

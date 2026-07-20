@@ -161,8 +161,21 @@ build_from_source() {
     if ! command -v go >/dev/null 2>&1; then
         return 1
     fi
-    echo "📦 使用本地 Go 从源码编译..."
-    (cd "${PROJECT_ROOT}" && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$dest" ./cmd/envkit)
+    if [ ! -f "${PROJECT_ROOT}/cmd/envkit/main.go" ]; then
+        return 1
+    fi
+    local ver short
+    short="$(cd "${PROJECT_ROOT}" && git rev-parse --short HEAD 2>/dev/null || echo "dev")"
+    ver="0.2.0+${short}"
+    echo "📦 使用本地 Go 从源码编译 (version=${ver})..."
+    # Version 注入 internal/cli，便于确认装的是哪次提交
+    (cd "${PROJECT_ROOT}" && CGO_ENABLED=0 go build -trimpath \
+        -ldflags="-s -w -X github.com/fusheng/envkit/internal/cli.Version=${ver}" \
+        -o "$dest" ./cmd/envkit)
+}
+
+has_source_tree() {
+    [ -f "${PROJECT_ROOT}/cmd/envkit/main.go" ] && [ -f "${PROJECT_ROOT}/go.mod" ]
 }
 
 install() {
@@ -175,30 +188,69 @@ install() {
     tmp="${dest}.tmp.$$"
 
     echo "📦 正在安装 EnvKit..."
+    echo "   目标路径: $dest"
 
-    # 1) 本地 dist
-    if [ -f "${PROJECT_ROOT}/dist/${name}" ]; then
-        cp "${PROJECT_ROOT}/dist/${name}" "$dest"
-        chmod +x "$dest"
-        echo "✅ 已从本地 dist 安装: $dest"
-    # 2) 多源下载（根因修复：超时 + 多镜像 + 内容校验）
-    elif download_binary "$tmp"; then
-        mv -f "$tmp" "$dest"
-        chmod +x "$dest"
-        echo "✅ 已安装到: $dest"
-    # 3) 源码编译兜底
-    elif build_from_source "$dest"; then
-        chmod +x "$dest"
-        echo "✅ 已从源码编译安装: $dest"
+    # 优先级说明：
+    # - ENVKIT_USE_RELEASE=1：强制走 dist / GitHub Release（CI/无 Go 环境）
+    # - 默认：若本机有 Go 且仓库是源码树 → 优先从源码编译（避免 git pull 后仍装上旧 Release）
+    # - 否则：dist → 下载 Release → 源码兜底
+    local installed=0
+
+    if [ "${ENVKIT_USE_RELEASE:-}" = "1" ]; then
+        echo "   模式: ENVKIT_USE_RELEASE=1（优先 dist / GitHub Release）"
+        if [ -f "${PROJECT_ROOT}/dist/${name}" ]; then
+            cp "${PROJECT_ROOT}/dist/${name}" "$dest"
+            chmod +x "$dest"
+            echo "✅ 已从本地 dist 安装: $dest"
+            installed=1
+        elif download_binary "$tmp"; then
+            mv -f "$tmp" "$dest"
+            chmod +x "$dest"
+            echo "✅ 已从 GitHub Release 安装: $dest"
+            installed=1
+        elif build_from_source "$dest"; then
+            chmod +x "$dest"
+            echo "✅ 已从源码编译安装: $dest"
+            installed=1
+        fi
     else
+        if command -v go >/dev/null 2>&1 && has_source_tree; then
+            echo "   模式: 源码优先（检测到 Go + 本地仓库）"
+            if build_from_source "$dest"; then
+                chmod +x "$dest"
+                echo "✅ 已从源码编译安装: $dest"
+                installed=1
+            fi
+        fi
+        if [ "$installed" -eq 0 ] && [ -f "${PROJECT_ROOT}/dist/${name}" ]; then
+            cp "${PROJECT_ROOT}/dist/${name}" "$dest"
+            chmod +x "$dest"
+            echo "✅ 已从本地 dist 安装: $dest"
+            installed=1
+        fi
+        if [ "$installed" -eq 0 ] && download_binary "$tmp"; then
+            mv -f "$tmp" "$dest"
+            chmod +x "$dest"
+            echo "✅ 已从 GitHub Release 安装: $dest"
+            installed=1
+        fi
+        if [ "$installed" -eq 0 ] && build_from_source "$dest"; then
+            chmod +x "$dest"
+            echo "✅ 已从源码编译安装: $dest"
+            installed=1
+        fi
+    fi
+
+    if [ "$installed" -eq 0 ]; then
         rm -f "$tmp"
         echo "❌ 安装失败"
-        echo "原因: 网络下载均失败，且本机无可用 Go 编译器。"
+        echo "原因: 网络下载均失败，且本机无可用 Go 编译器 / 源码树。"
         echo "可尝试:"
         echo "  1. 设置镜像: export ENVKIT_MIRROR=https://ghfast.top/"
         echo "  2. 放宽超时: export ENVKIT_CONNECT_TIMEOUT=60 ENVKIT_MAX_TIME=600"
         echo "  3. 安装 Go 后重试: https://go.dev/dl/"
-        echo "  4. 手动下载: $(release_url)"
+        echo "  4. 手动编译: go build -o envkit ./cmd/envkit && sudo cp envkit /usr/local/bin/"
+        echo "  5. 手动下载: $(release_url)"
         exit 1
     fi
 
@@ -209,7 +261,18 @@ install() {
     fi
 
     echo ""
-    echo "🎉 安装完成，可运行: envkit version"
+    echo "🎉 安装完成"
+    echo "   二进制: $dest"
+    if command -v "$dest" >/dev/null 2>&1 || [ -x "$dest" ]; then
+        echo -n "   版本: "
+        "$dest" version 2>/dev/null || true
+        echo -n "   uv 是否在 list 中: "
+        if "$dest" list 2>/dev/null | grep -qE '[[:space:]]uv[[:space:]]'; then
+            echo "是 ✓"
+        else
+            echo "否 ✗（请确认源码是否包含 uv 提交）"
+        fi
+    fi
     echo ""
 }
 
