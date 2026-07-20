@@ -10,7 +10,7 @@ import (
 )
 
 // Version 由发布构建通过 -ldflags -X 注入；本地默认与最新 release 对齐
-var Version = "0.2.2"
+var Version = "0.2.3"
 
 var launchTUI bool
 

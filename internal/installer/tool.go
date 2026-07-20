@@ -449,32 +449,36 @@ func (u *UvInstaller) Install() error {
 	spinner.Start()
 	defer spinner.Stop()
 
-	if u.IsInstalled() {
+	already := u.IsInstalled()
+	if already {
 		ui.Info("uv 已安装: %s", strings.TrimSpace(u.GetVersion()))
-		return u.recordManifest()
+	} else {
+		var err error
+		switch runtime.GOOS {
+		case "darwin", "linux":
+			err = u.installUnix()
+		case "windows":
+			err = u.installWindows()
+		default:
+			return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+		}
+		if err != nil {
+			return err
+		}
 	}
 
-	var err error
-	switch runtime.GOOS {
-	case "darwin", "linux":
-		err = u.installUnix()
-	case "windows":
-		err = u.installWindows()
-	default:
-		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
-	}
-	if err != nil {
-		return err
-	}
-
-	// 官方安装脚本默认写入 ~/.local/bin，需刷新当前进程 PATH
+	// 无论是否已安装，都确保 ~/.local/bin 写入 shell（官方脚本默认安装位置）
 	if err := locateAndAddUvToPath(); err != nil && !u.IsInstalled() {
 		return err
 	}
 	if !u.IsInstalled() {
 		return fmt.Errorf("uv 安装完成但未检测到 uv 命令（请检查 PATH 或重开终端）")
 	}
-	ui.Success("uv 安装成功: %s", strings.TrimSpace(u.GetVersion()))
+	if already {
+		ui.Success("已修复 PATH 配置，重开终端后可直接使用 uv")
+	} else {
+		ui.Success("uv 安装成功: %s", strings.TrimSpace(u.GetVersion()))
+	}
 	return u.recordManifest()
 }
 

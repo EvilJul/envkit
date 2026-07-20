@@ -376,12 +376,9 @@ func applyFnmEnv() error {
 	return nil
 }
 
-// locateAndAddUvToPath 定位并添加 uv 到 PATH
+// locateAndAddUvToPath 定位 uv 二进制，加入当前进程 PATH，并持久化到 shell 配置。
+// 注意：即使 commandExists("uv") 已为 true，仍会写入 shell，避免「检测已安装但终端找不到」的情况。
 func locateAndAddUvToPath() error {
-	if commandExists("uv") {
-		return nil
-	}
-
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -402,10 +399,20 @@ func locateAndAddUvToPath() error {
 			uvPath := filepath.Join(dir, name)
 			if _, err := os.Stat(uvPath); err == nil {
 				AddDirToPath(dir)
-				_ = PersistPathEnvTagged(dir, "uv")
+				if err := PersistPathEnvTagged(dir, "uv"); err != nil {
+					ui.Warning("uv 已找到，但写入 shell PATH 失败: %v（请手动将 %s 加入 PATH）", err, dir)
+				}
 				return nil
 			}
 		}
+	}
+
+	if commandExists("uv") {
+		// 在 PATH 中但非标准目录：仍尽量把 ~/.local/bin 写进配置（官方脚本默认位置）
+		localBin := filepath.Join(home, ".local", "bin")
+		AddDirToPath(localBin)
+		_ = PersistPathEnvTagged(localBin, "uv")
+		return nil
 	}
 
 	return fmt.Errorf("未找到 uv 二进制文件，请确认安装成功并已加入 PATH")

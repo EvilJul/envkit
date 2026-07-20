@@ -166,7 +166,7 @@ build_from_source() {
     fi
     local ver short
     short="$(cd "${PROJECT_ROOT}" && git rev-parse --short HEAD 2>/dev/null || echo "dev")"
-    ver="0.2.2+${short}"
+    ver="0.2.3+${short}"
     echo "📦 使用本地 Go 从源码编译 (version=${ver})..."
     # Version 注入 internal/cli，便于确认装的是哪次提交
     (cd "${PROJECT_ROOT}" && CGO_ENABLED=0 go build -trimpath \

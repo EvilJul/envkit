@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-07-20
+
+### Fixed
+- **uv PATH 持久化**：安装后即使已能检测到 uv，也会将 `~/.local/bin` 写入 shell 配置
+- 重复执行 `envkit install uv` 会补写 PATH，避免「list 显示已安装但终端找不到 uv」
+
+### Changed
+- 版本默认与 Release 对齐为 **0.2.3**
+
 ## [0.2.2] - 2026-07-20
 
 ### Added
