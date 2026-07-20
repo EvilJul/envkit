@@ -4,7 +4,7 @@
 .DEFAULT_GOAL := help
 
 APP_NAME = envkit
-VERSION = 0.1.0
+VERSION = 0.2.2
 BUILD_DIR = dist
 MAIN_FILE = cmd/envkit/main.go
 

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-07-20
+
+### Added
+- 独立工具 **uv**（Astral）：CLI/GUI 可单独安装与卸载；Python 安装复用同一安装器
+- `GetDatabases` 对接 Docker 容器列表，GUI 数据库页可显示运行中的容器
+- 安装清单组件名归一化（`code`→`vscode` 等），避免装卸名不一致
+
+### Fixed
+- GUI 假按钮：移除无后端的 vim/curl/wget、MariaDB/ClickHouse
+- 清单 `RecordInstallation` 失败不再静默忽略
+- Docker 容器存在性检测改为精确匹配
+- Environment 页：Linux bash 优先 `.bashrc`，PATH 使用系统分隔符
+- `install.sh`：源码树有 Go 时优先本地编译，避免覆盖为旧 GitHub Release
+- StartStack 未完整实现时返回明确错误，避免假成功
+- 进度 Reporter 并发安全；重复 GUI 入口 build ignore；frontend/dist 占位
+
+### Changed
+- 版本默认与 Release 对齐为 **0.2.2**
+
 ## [0.1.0] - 2026-06-07
 
 ### Added

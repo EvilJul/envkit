@@ -512,7 +512,7 @@ func main() {
 			TitleBar: mac.TitleBarHiddenInset(),
 			About: &mac.AboutInfo{
 				Title:   "EnvKit",
-				Message: "轻量级跨平台开发环境管理工具 v0.2.0",
+				Message: "轻量级跨平台开发环境管理工具 v0.2.2",
 			},
 		},
 	})

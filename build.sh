@@ -4,12 +4,12 @@
 set -euo pipefail
 
 APP_NAME="envkit"
-# 优先：环境变量 VERSION → git tag → 默认 0.2.0
+# 优先：环境变量 VERSION → git tag → 默认 0.2.2
 if [ -z "${VERSION:-}" ]; then
   if git describe --tags --exact-match 2>/dev/null | grep -q '^v'; then
     VERSION="$(git describe --tags --exact-match | sed 's/^v//')"
   else
-    VERSION="0.2.0"
+    VERSION="0.2.2"
   fi
 fi
 
