@@ -192,15 +192,11 @@ func (p *PythonInstaller) installWithBrew(version string) error {
 }
 
 func (p *PythonInstaller) installWithUv(version string) error {
-	// 检查是否安装了 uv
+	// 复用独立 UvInstaller：保证清单记录与卸载路径一致
 	if !commandExists("uv") {
 		ui.Info("正在安装 uv (Python 包管理器)...")
-		if err := runCommand("sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"); err != nil {
+		if err := (&UvInstaller{}).Install(); err != nil {
 			return fmt.Errorf("安装 uv 失败: %w", err)
-		}
-
-		if err := locateAndAddUvToPath(); err != nil {
-			return err
 		}
 	}
 

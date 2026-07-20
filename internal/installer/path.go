@@ -402,7 +402,7 @@ func locateAndAddUvToPath() error {
 			uvPath := filepath.Join(dir, name)
 			if _, err := os.Stat(uvPath); err == nil {
 				AddDirToPath(dir)
-				_ = PersistPathEnv(dir)
+				_ = PersistPathEnvTagged(dir, "uv")
 				return nil
 			}
 		}

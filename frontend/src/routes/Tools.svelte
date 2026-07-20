@@ -67,6 +67,7 @@
     git: '分布式版本控制系统',
     docker: '容器化应用打包与运行时',
     vscode: 'Visual Studio Code 编辑器',
+    uv: 'Astral uv — 极速 Python 包与项目管理器',
     miniconda: 'Miniconda 科学计算环境',
     kubectl: 'Kubernetes 命令行工具',
     minikube: '本地 Kubernetes 集群',

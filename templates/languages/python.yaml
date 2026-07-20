@@ -8,6 +8,7 @@ languages:
 
 tools:
   - git
+  - uv
   - vscode
 
 databases: []

@@ -424,6 +424,8 @@ func GetToolInstaller(tool string) ToolInstaller {
 		return &DockerInstaller{}
 	case "vscode", "code":
 		return &VSCodeInstaller{}
+	case "uv":
+		return &UvInstaller{}
 	case "miniconda", "conda":
 		return &MinicondaInstaller{}
 	case "kubectl":
@@ -437,6 +439,98 @@ func GetToolInstaller(tool string) ToolInstaller {
 	default:
 		return nil
 	}
+}
+
+// UvInstaller Astral uv（极速 Python 包/项目管理器，亦可安装 CPython）
+type UvInstaller struct{}
+
+func (u *UvInstaller) Install() error {
+	spinner := ui.NewSpinner("正在安装 uv")
+	spinner.Start()
+	defer spinner.Stop()
+
+	if u.IsInstalled() {
+		ui.Info("uv 已安装: %s", strings.TrimSpace(u.GetVersion()))
+		return u.recordManifest()
+	}
+
+	var err error
+	switch runtime.GOOS {
+	case "darwin", "linux":
+		err = u.installUnix()
+	case "windows":
+		err = u.installWindows()
+	default:
+		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+	if err != nil {
+		return err
+	}
+
+	// 官方安装脚本默认写入 ~/.local/bin，需刷新当前进程 PATH
+	if err := locateAndAddUvToPath(); err != nil && !u.IsInstalled() {
+		return err
+	}
+	if !u.IsInstalled() {
+		return fmt.Errorf("uv 安装完成但未检测到 uv 命令（请检查 PATH 或重开终端）")
+	}
+	ui.Success("uv 安装成功: %s", strings.TrimSpace(u.GetVersion()))
+	return u.recordManifest()
+}
+
+func (u *UvInstaller) recordManifest() error {
+	paths := []string{"~/.local/bin/uv", "~/.local/bin/uvx", "~/.cargo/bin/uv"}
+	if runtime.GOOS == "windows" {
+		paths = []string{"~/.local/bin/uv.exe", "~/.local/bin/uvx.exe"}
+	}
+	return recordInstall("uv", "tool", "latest", paths, []string{"# envkit:uv"})
+}
+
+func (u *UvInstaller) installUnix() error {
+	// 依赖 curl；最小化系统可能缺失
+	if err := CheckAndInstallDependencies([]SystemDependency{CommonDependencies[0]}); err != nil {
+		ui.Warning("系统依赖检测: %v", err)
+	}
+	ui.Info("通过官方安装脚本安装 uv...")
+	if err := runCommand("sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"); err != nil {
+		return fmt.Errorf("安装 uv 失败: %w", err)
+	}
+	return nil
+}
+
+func (u *UvInstaller) installWindows() error {
+	// 优先 winget（包 ID: astral-sh.uv）
+	if commandExists("winget") {
+		ui.Info("尝试通过 winget 安装 uv...")
+		if err := installWithWinget("astral-sh.uv"); err == nil {
+			refreshProcessPathFromRegistry()
+			if u.IsInstalled() {
+				return nil
+			}
+		} else {
+			ui.Warning("winget 安装 uv 失败 (%v)，改用官方 PowerShell 脚本", err)
+		}
+	}
+	ui.Info("通过官方 PowerShell 脚本安装 uv...")
+	if err := runCommand("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+		"-Command", "irm https://astral.sh/uv/install.ps1 | iex"); err != nil {
+		return fmt.Errorf("安装 uv 失败: %w", err)
+	}
+	refreshProcessPathFromRegistry()
+	return nil
+}
+
+func (u *UvInstaller) IsInstalled() bool {
+	return commandExists("uv")
+}
+
+func (u *UvInstaller) GetVersion() string {
+	cmd := exec.Command("uv", "--version")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
 }
 
 // MinicondaInstaller Miniconda 安装器

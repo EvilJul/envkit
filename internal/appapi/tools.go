@@ -21,6 +21,7 @@ func GetTools() []Tool {
 		{Name: "git", DisplayName: "Git", Version: "latest", Installed: false},
 		{Name: "docker", DisplayName: "Docker", Version: "latest", Installed: false},
 		{Name: "vscode", DisplayName: "VS Code", Version: "latest", Installed: false},
+		{Name: "uv", DisplayName: "uv", Version: "latest", Installed: false},
 		{Name: "miniconda", DisplayName: "Miniconda", Version: "latest", Installed: false},
 		{Name: "kubectl", DisplayName: "Kubectl", Version: "latest", Installed: false},
 		{Name: "minikube", DisplayName: "Minikube", Version: "latest", Installed: false},

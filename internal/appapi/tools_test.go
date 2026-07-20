@@ -5,7 +5,7 @@ import "testing"
 func TestGetToolsNamesMatchInstaller(t *testing.T) {
 	// 安装器支持的清单键，GetTools 的 Name 必须对齐
 	allowed := map[string]bool{
-		"git": true, "docker": true, "vscode": true, "miniconda": true,
+		"git": true, "docker": true, "vscode": true, "uv": true, "miniconda": true,
 		"kubectl": true, "minikube": true, "espidf": true, "android": true,
 	}
 	// 禁止再出现的「仅检测、不可安装」项

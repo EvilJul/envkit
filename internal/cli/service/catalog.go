@@ -29,6 +29,7 @@ func ListCatalog() []CatalogRow {
 		{"git", "", StatusLabel(tools["git"]), "版本控制系统", "tool"},
 		{"docker", "", StatusLabel(tools["docker"]), "应用容器引擎", "tool"},
 		{"vscode", "", StatusLabel(tools["code"]), "Visual Studio Code 编辑器", "tool"},
+		{"uv", "", StatusLabel(tools["uv"]), "Astral uv（Python 包/项目管理器）", "tool"},
 		{"miniconda", "", StatusLabel(tools["conda"]), "Conda 虚拟环境与包管理器", "tool"},
 		{"kubectl", "", StatusLabel(tools["kubectl"]), "Kubernetes 命令行控制工具", "tool"},
 		{"minikube", "", StatusLabel(tools["minikube"]), "本地单节点 Kubernetes 集群", "tool"},
@@ -62,6 +63,7 @@ func InstallOptions() []InstallOption {
 		{"Git", "git", "tool", ""},
 		{"Docker", "docker", "tool", ""},
 		{"VSCode", "vscode", "tool", ""},
+		{"uv", "uv", "tool", ""},
 		{"Miniconda", "miniconda", "tool", ""},
 		{"Kubectl", "kubectl", "tool", ""},
 		{"Minikube", "minikube", "tool", ""},
@@ -120,6 +122,8 @@ func ParseInstallTargets(targets []string) (*config.Config, []string) {
 			tools = append(tools, "docker")
 		case "vscode", "code":
 			tools = append(tools, "vscode")
+		case "uv":
+			tools = append(tools, "uv")
 		case "miniconda", "conda":
 			tools = append(tools, "miniconda")
 		case "kubectl":

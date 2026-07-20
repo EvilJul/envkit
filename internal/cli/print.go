@@ -67,6 +67,7 @@ func PrintCatalog() {
 	toolTable.AddRow("git", statusANSI(tools["git"]), "版本控制系统")
 	toolTable.AddRow("docker", statusANSI(tools["docker"]), "应用容器引擎")
 	toolTable.AddRow("vscode", statusANSI(tools["code"]), "Visual Studio Code 编辑器")
+	toolTable.AddRow("uv", statusANSI(tools["uv"]), "Astral uv（Python 包/项目管理器）")
 	toolTable.AddRow("miniconda", statusANSI(tools["conda"]), "Conda 虚拟环境与包管理器 (清华源)")
 	toolTable.AddRow("kubectl", statusANSI(tools["kubectl"]), "Kubernetes 命令行控制工具")
 	toolTable.AddRow("minikube", statusANSI(tools["minikube"]), "本地单节点 Kubernetes 集群运行工具")

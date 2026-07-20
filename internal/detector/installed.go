@@ -117,6 +117,12 @@ func cleanVersionString(name string, raw string) string {
 		if len(parts) >= 2 && parts[0] == "curl" {
 			return parts[1]
 		}
+	case "uv":
+		// 例如: "uv 0.6.14" -> "0.6.14"
+		parts := strings.Fields(firstLine)
+		if len(parts) >= 2 && parts[0] == "uv" {
+			return parts[1]
+		}
 	case "git":
 		// 例如: "git version 2.37.1 (Apple Git-137.1)" -> "2.37.1"
 		parts := strings.Fields(firstLine)
@@ -262,6 +268,7 @@ func DetectTools() map[string]*Tool {
 		"vim":        DetectTool("vim", "--version"),
 		"curl":       DetectTool("curl", "--version"),
 		"wget":       DetectTool("wget", "--version"),
+		"uv":         DetectTool("uv", "--version"),
 		"conda":      DetectTool("conda", "--version"),
 		"kubectl":    DetectTool("kubectl", "version --client"),
 		"minikube":   DetectTool("minikube", "version"),
